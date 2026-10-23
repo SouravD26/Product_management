@@ -1,0 +1,535 @@
+.calendar-month-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px;
+  border: 1px solid #e9eaf0;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.calendar-month-switch strong {
+  min-width: 120px;
+  color: #30303c;
+  font-size: 12px;
+  text-align: center;
+}
+
+.sale-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.modal-backdrop {
+  background: rgba(22, 22, 31, 0.46);
+  backdrop-filter: blur(5px);
+}
+
+.modal-card {
+  width: min(100%, 560px);
+  padding: 24px;
+  border: 1px solid #e8e8ee;
+  border-radius: 14px;
+  box-shadow: 0 28px 80px rgba(20, 20, 32, 0.22), 0 4px 12px rgba(20, 20, 32, 0.08);
+}
+
+.modal-heading {
+  align-items: flex-start;
+  margin-bottom: 20px;
+  padding-bottom: 17px;
+  border-bottom: 1px solid #f0f0f4;
+}
+
+.modal-heading .eyebrow {
+  color: #777684;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.modal-heading h2 {
+  margin: 6px 0 5px;
+  color: #252530;
+  font: 700 21px Manrope, sans-serif;
+  letter-spacing: -0.035em;
+}
+
+.modal-heading p {
+  margin: 0;
+  color: #858490;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.modal-close {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #ececf1;
+  border-radius: 8px;
+  background: #fff;
+  color: #777684;
+}
+
+.modal-close:hover {
+  border-color: #dddde6;
+  background: #f8f8fa;
+  color: #30303c;
+}
+
+.form-grid {
+  gap: 15px 14px;
+}
+
+.field > span {
+  color: #464550;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.field input:not([type="file"]),
+.field select {
+  min-height: 38px;
+  border: 1px solid #e5e5ec;
+  border-radius: 7px;
+  background: #fff;
+  color: #30303c;
+  font-size: 11px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.field input:not([type="file"]):focus,
+.field select:focus {
+  border-color: #978be7;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(104, 87, 223, 0.12);
+}
+
+.field input::placeholder {
+  color: #aaa9b3;
+}
+
+.modal-footer {
+  position: sticky;
+  bottom: -18px;
+  padding: 15px 0 2px;
+  border-top-color: #edecf2;
+  background: #fff;
+}
+
+.modal-footer .button {
+  min-height: 36px;
+  border-radius: 7px;
+  font-size: 10px;
+}
+
+.modal-error {
+  border: 1px solid #f1d9d9;
+  border-radius: 8px;
+  background: #fff8f8;
+  color: #a84d4d;
+}
+
+.confirmation-backdrop {
+  z-index: 40;
+}
+
+.confirmation-dialog {
+  display: grid;
+  width: min(100%, 430px);
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 4px 14px;
+  padding: 23px;
+}
+
+.confirmation-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #f0dddd;
+  border-radius: 10px;
+  background: #fff7f7;
+  color: #b64e4e;
+}
+
+.confirmation-copy .eyebrow {
+  color: #858490;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.confirmation-copy h2 {
+  margin: 5px 0 7px;
+  color: #282833;
+  font: 700 18px Manrope, sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.confirmation-copy p {
+  margin: 0;
+  color: #777682;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.confirmation-actions {
+  display: flex;
+  grid-column: 2;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 17px;
+}
+
+.confirmation-actions .button,
+.confirmation-delete-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.confirmation-delete-button {
+  border: 1px solid #a94444;
+  background: #b84d4d;
+  color: #fff;
+}
+
+.confirmation-delete-button:hover {
+  border-color: #963d3d;
+  background: #a94444;
+}
+
+@media (max-width: 600px) {
+  .modal-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .modal-card {
+    max-height: calc(100dvh - 20px);
+    padding: 19px 16px 16px;
+    border-radius: 13px;
+  }
+
+  .modal-heading h2 {
+    font-size: 19px;
+  }
+}
+
+.sales-calendar-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.8fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.sales-calendar-panel,
+.calendar-detail-panel {
+  min-width: 0;
+  padding: 17px;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendar-weekdays {
+  margin-bottom: 8px;
+}
+
+.calendar-weekdays span {
+  padding: 5px 4px;
+  color: #90909d;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.calendar-grid {
+  gap: 5px;
+}
+
+.calendar-day {
+  display: flex;
+  min-width: 0;
+  min-height: 94px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 9px 7px;
+  overflow: hidden;
+  border: 1px solid #edecf2;
+  border-radius: 8px;
+  background: #fff;
+  color: #30303c;
+  text-align: left;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.calendar-day:not(:disabled):hover {
+  border-color: #b8afea;
+  background: #fbfaff;
+}
+
+.calendar-day.empty {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+.calendar-day.selected {
+  border-color: #7566df;
+  background: #f5f3ff;
+  box-shadow: inset 0 0 0 1px #7566df;
+}
+
+.calendar-day.has-sales .calendar-day-number {
+  color: #6857d8;
+}
+
+.calendar-day-number {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.calendar-day-count {
+  color: #418769;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.calendar-day-products {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
+  color: #858694;
+  font-size: 9px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.calendar-empty-note,
+.calendar-no-sales {
+  margin: 15px 2px 2px;
+  color: #8a8995;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.calendar-detail-heading h2 {
+  margin: 5px 0 0;
+  color: #30303c;
+  font: 700 17px Manrope, sans-serif;
+}
+
+.calendar-day-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 17px 0 15px;
+  padding: 11px 0;
+  border-top: 1px solid #edecf2;
+  border-bottom: 1px solid #edecf2;
+}
+
+.calendar-day-summary > div {
+  display: grid;
+  gap: 5px;
+}
+
+.calendar-day-summary span {
+  color: #8c8b98;
+  font-size: 9px;
+}
+
+.calendar-day-summary strong {
+  color: #353541;
+  font-size: 12px;
+}
+
+.calendar-order-list {
+  display: grid;
+  gap: 9px;
+  max-height: 510px;
+  overflow: auto;
+}
+
+.calendar-order {
+  padding: 11px;
+  border: 1px solid #edecf2;
+  border-radius: 8px;
+  background: #fdfdff;
+}
+
+.calendar-order-title,
+.calendar-product-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.calendar-order-title {
+  margin-bottom: 9px;
+}
+
+.calendar-order-title strong {
+  color: #5e51bd;
+  font-size: 10px;
+}
+
+.calendar-order-title span {
+  color: #9998a4;
+  font-size: 9px;
+}
+
+.calendar-product-line {
+  padding-top: 7px;
+  border-top: 1px solid #f0eff4;
+}
+
+.calendar-product-line + .calendar-product-line {
+  margin-top: 7px;
+}
+
+.calendar-product-line span {
+  min-width: 0;
+  overflow: hidden;
+  color: #53535f;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-product-line strong {
+  flex-shrink: 0;
+  color: #6b6a76;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.report-delete-button {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #f1dede;
+  border-radius: 6px;
+  background: #fff;
+  color: #b35f5f;
+}
+
+.report-delete-button:hover {
+  border-color: #e5b9b9;
+  background: #fff6f6;
+  color: #9f4141;
+}
+
+.sale-edit-items {
+  display: grid;
+  gap: 9px;
+  margin: 14px 0 18px;
+  padding: 12px;
+  border: 1px solid #edecf2;
+  border-radius: 8px;
+  background: #fdfdff;
+}
+
+.sale-edit-items > strong {
+  color: #565561;
+  font-size: 10px;
+}
+
+.sale-edit-items > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #efeff4;
+  color: #777683;
+  font-size: 10px;
+}
+
+.sale-edit-button,
+.sale-delete-button {
+  display: inline-flex;
+  height: 27px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid #eceaf4;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.sale-edit-button {
+  color: #6857d8;
+}
+
+.sale-delete-button {
+  border-color: #f1dede;
+  color: #b35f5f;
+}
+
+.sale-edit-button:hover {
+  background: #f6f4ff;
+}
+
+.sale-delete-button:hover {
+  background: #fff6f6;
+}
+
+.transaction-controls {
+  display: flex;
+  width: auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  text-align: right;
+}
+
+@media (max-width: 1050px) {
+  .sales-calendar-layout {
+    grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.8fr);
+  }
+
+  .calendar-day {
+    min-height: 82px;
+    padding: 7px 5px;
+  }
+}
+
+@media (max-width: 760px) {
+  .sale-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-calendar-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-day {
+    min-height: 70px;
+    gap: 5px;
+    padding: 6px 4px;
+  }
+
+  .calendar-day-count,
+  .calendar-day-products {
+    font-size: 8px;
+  }
+}
