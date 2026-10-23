@@ -16,6 +16,10 @@ For a production build, run `npm run build`, then `npm start`. The Node server s
 
 Keep secrets in `.env`. It is excluded from Git; `.env.example` contains placeholders only.
 
+## Deploy to Vercel
+
+The repository includes a Vercel serverless API entry point and builds the React app to `dist`. Before deploying, use a hosted MongoDB database such as MongoDB Atlas; Vercel cannot reach a MongoDB instance running only on your computer. In the Vercel project, add `MONGODB_URI` with the Atlas connection string and optionally `OPENAI_API_KEY` and `OPENAI_MODEL` under **Settings → Environment Variables**, then redeploy. Make sure the Atlas network access rules allow Vercel connections. Never commit `.env` or paste secrets into source files.
+
 ## Features
 
 - **Inventory:** manage product images, names, SKUs, HSN codes, categories, stock, buy and selling prices, desired profit, commission, GST, delivery, packaging, other spend, and return assumptions. Product images are resized in the browser and stored in MongoDB.

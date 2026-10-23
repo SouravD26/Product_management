@@ -12,12 +12,31 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 app.use(cors());
 app.use(express.json({ limit: '3mb' }));
 
+let mongoConnectionPromise;
+const connectDatabase = async () => {
+  if (mongoose.connection.readyState === 1) return;
+  const mongoUri = process.env.MONGODB_URI || (process.env.VERCEL ? '' : 'mongodb://127.0.0.1:27017/meridian');
+  if (!mongoUri) throw new Error('MONGODB_URI is not configured. Add a MongoDB Atlas connection string in the Vercel project environment variables.');
+  if (!mongoConnectionPromise) {
+    mongoConnectionPromise = mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000 })
+      .catch((error) => { mongoConnectionPromise = undefined; throw error; });
+  }
+  await mongoConnectionPromise;
+};
+
 const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 const round = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 const validProductImage = (image) => image === undefined || image === '' || (
   typeof image === 'string' && image.length <= 2_000_000 &&
   /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image)
 );
+
+// In Vercel's serverless runtime, connect on demand and reuse the connection
+// for warm function instances. Locally this also waits for MongoDB per request.
+app.use('/api', asyncRoute(async (_req, _res, next) => {
+  await connectDatabase();
+  next();
+}));
 
 app.get('/api/health', (_req, res) => res.json({
   status: 'ok', database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
@@ -366,12 +385,17 @@ app.get('*', (req, res, next) => {
 app.use((err, _req, res, _next) => {
   if (err?.code === 11000) return res.status(409).json({ message: 'That SKU is already in use.' });
   if (err instanceof mongoose.Error.ValidationError) return res.status(400).json({ message: err.message });
+  if (err instanceof mongoose.Error.MongooseServerSelectionError || err?.message?.startsWith('MONGODB_URI is not configured')) {
+    console.error('MongoDB connection unavailable:', err.message);
+    return res.status(503).json({ message: 'Could not connect to MongoDB. Check the MONGODB_URI environment variable and MongoDB Atlas network access.' });
+  }
   console.error(err);
   res.status(500).json({ message: 'Something went wrong. Please try again.' });
 });
 
-const port = process.env.PORT || 5000;
-app.listen(port, () => console.log(`Meridian API listening on http://localhost:${port}`));
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/meridian')
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((error) => console.error('MongoDB connection failed:', error.message));
+if (!process.env.VERCEL) {
+  const port = process.env.PORT || 5000;
+  app.listen(port, () => console.log(`Meridian API listening on http://localhost:${port}`));
+}
+
+export default app;
