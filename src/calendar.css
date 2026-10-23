@@ -22,6 +22,70 @@
   margin-bottom: 14px;
 }
 
+.report-download-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 11px;
+  margin: 14px 0;
+  padding: 14px 16px;
+}
+
+.report-download-copy {
+  display: grid;
+  flex: 1 1 220px;
+  gap: 5px;
+  margin-right: auto;
+}
+
+.report-download-copy strong {
+  color: #353541;
+  font-size: 11px;
+}
+
+.report-download-copy span {
+  color: #8a8995;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.report-download-panel label {
+  display: grid;
+  min-width: 130px;
+  gap: 5px;
+  color: #777682;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.report-download-panel input[type="date"] {
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid #e5e5ec;
+  border-radius: 7px;
+  background: #fff;
+  color: #353541;
+  font: inherit;
+}
+
+.report-download-panel input[type="date"]:focus {
+  border-color: #978be7;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(104, 87, 223, 0.12);
+}
+
+.report-download-panel .button {
+  min-height: 34px;
+  border-radius: 7px;
+  font-size: 9px;
+}
+
+.report-date-error {
+  flex-basis: 100%;
+  color: #b34f4f;
+  font-size: 9px;
+}
+
 .modal-backdrop {
   background: rgba(22, 22, 31, 0.46);
   backdrop-filter: blur(5px);
@@ -526,6 +590,14 @@
     min-height: 70px;
     gap: 5px;
     padding: 6px 4px;
+  }
+
+  .report-download-panel {
+    align-items: stretch;
+  }
+
+  .report-download-panel label {
+    flex: 1 1 125px;
   }
 
   .calendar-day-count,
