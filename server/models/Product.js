@@ -7,6 +7,7 @@ const productSchema = new mongoose.Schema({
   category: { type: String, trim: true, default: 'General' },
   image: { type: String, default: '', maxlength: 2000000 },
   quantity: { type: Number, required: true, min: 0, default: 0 },
+  packSize: { type: Number, required: true, enum: [1, 2, 3, 4], default: 1 },
   buyPrice: { type: Number, required: true, min: 0 },
   sellingPrice: { type: Number, required: true, min: 0 },
   desiredProfit: { type: Number, min: 0, default: 0 },

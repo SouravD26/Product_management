@@ -58,7 +58,7 @@ app.post('/api/chat', asyncRoute(async (req, res) => {
   const instructions = [
     'You are the Amita Essentials dashboard assistant. Answer questions about using this product-management dashboard and interpreting the supplied business data.',
     'Give direct, useful answers in plain language. For how-to questions, provide steps using the exact app section and button names when present in the known app behavior.',
-    'App guide: the sidebar has Overview, Inventory, Sales & returns, and Profit reports. Add or edit products from Inventory. Product forms include an image upload, buy price, selling price, desired profit, fees, taxes, and return assumptions. Record orders from Sales & returns; stock decreases automatically. Process a return from its original sale row; its quantity is returned to stock and reflected in that sale month. Use Profit reports to change months or export the detail CSV.',
+    'App guide: the sidebar has Overview, Inventory, Sales & returns, and Profit reports. Add or edit products from Inventory. Product forms include an image upload, stock in individual units, pack size from one to four, buy and selling prices per pack, desired profit, fees, taxes, and return assumptions. Record orders from Sales & returns; stock decreases by the pack size for every pack sold. Process a return from its original sale row; the pack units return to stock and are reflected in that sale month. Use Profit reports to change months or export the detail CSV.',
     'The product price calculator treats selling price as GST-inclusive. It subtracts commission after GST and expected refunds, includes buy cost, delivery, packaging, additional spend, return shipping, and expected good/damaged returns. Desired profit is a target per kept sale. Do not claim there is a feature to delete products or classify return condition; neither is present in the app.',
     'Use dashboard context for figures. Never invent sales, stock, fees, dates, or product facts. If the context does not contain the requested data, say what is missing and explain where the user can find it.',
     'For product pricing, explain the app assumptions: selling price includes GST; commission is applied after GST and expected refunds; good and damaged return percentages split returns; suggested profit target is per sale kept by the customer.',
@@ -159,19 +159,20 @@ app.post('/api/sales', asyncRoute(async (req, res) => {
   for (const [productId, quantity] of quantitiesByProduct) {
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ message: `Product ${productId} was not found.` });
-    if (product.quantity < quantity) return res.status(400).json({ message: `Only ${product.quantity} units of ${product.name} are in stock.` });
+    const unitsRequired = quantity * Number(product.packSize || 1);
+    if (product.quantity < unitsRequired) return res.status(400).json({ message: `Not enough stock for ${product.name}. ${quantity} pack(s) require ${unitsRequired} units; ${product.quantity} units are in stock.` });
     products.set(productId, product);
   }
   for (const [productId, quantity] of quantitiesByProduct) {
     const product = products.get(productId);
-    product.quantity -= quantity;
+    product.quantity -= quantity * Number(product.packSize || 1);
     await product.save();
   }
   for (const requested of req.body.items) {
     const product = products.get(String(requested.productId));
     const quantity = Number(requested.quantity);
     items.push({
-      product: product._id, name: product.name, sku: product.sku, hsn: product.hsn, quantity,
+      product: product._id, name: product.name, sku: product.sku, hsn: product.hsn, quantity, packSize: Number(product.packSize || 1),
       buyPrice: product.buyPrice, sellingPrice: product.sellingPrice, desiredProfit: product.desiredProfit, deliveryFee: product.deliveryFee,
       commissionRate: product.commissionRate, gstRate: product.gstRate, packagingCost: product.packagingCost,
       additionalCost: product.additionalCost,
@@ -189,10 +190,10 @@ app.post('/api/sales/:saleId/returns', asyncRoute(async (req, res) => {
   if (!item) return res.status(404).json({ message: 'Product is not part of this sale.' });
   const quantity = Number(req.body.quantity);
   if (!Number.isInteger(quantity) || quantity < 1) return res.status(400).json({ message: 'Return quantity must be a whole number greater than zero.' });
-  if (item.returnedQuantity + quantity > item.quantity) return res.status(400).json({ message: 'Return quantity exceeds the number of units sold.' });
+  if (item.returnedQuantity + quantity > item.quantity) return res.status(400).json({ message: 'Return quantity exceeds the number of packs sold.' });
   const product = await Product.findById(item.product);
   if (product) {
-    product.quantity += quantity;
+    product.quantity += quantity * Number(item.packSize || 1);
     await product.save();
   }
   item.returnedQuantity += quantity;
@@ -206,7 +207,7 @@ app.delete('/api/sales/:saleId/items/:itemIndex', asyncRoute(async (req, res) =>
   const itemIndex = Number(req.params.itemIndex);
   if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= sale.items.length) return res.status(404).json({ message: 'Sale item not found.' });
   const [item] = sale.items.splice(itemIndex, 1);
-  const unsoldQuantity = Math.max(0, item.quantity - item.returnedQuantity);
+  const unsoldQuantity = Math.max(0, item.quantity - item.returnedQuantity) * Number(item.packSize || 1);
   if (unsoldQuantity > 0) {
     const product = await Product.findById(item.product);
     if (product) {
@@ -252,34 +253,34 @@ app.patch('/api/sales/:saleId', asyncRoute(async (req, res) => {
         usedSourceIndexes.add(line.sourceIndex);
         previous = sale.items[line.sourceIndex];
         if (previous.returnedQuantity > 0 && String(previous.product) !== productId) return res.status(400).json({ message: 'A product with a processed return cannot be replaced.' });
-        if (quantity < previous.returnedQuantity) return res.status(400).json({ message: 'Quantity cannot be less than the number already returned.' });
-        addStockChange(String(previous.product), previous.quantity - previous.returnedQuantity);
+        if (quantity < previous.returnedQuantity) return res.status(400).json({ message: 'Pack quantity cannot be less than the number already returned.' });
+        addStockChange(String(previous.product), (previous.quantity - previous.returnedQuantity) * Number(previous.packSize || 1));
       }
       const product = products.get(productId);
       if (!previous || String(previous.product) !== productId) {
         if (!product) return res.status(404).json({ message: 'A selected product could not be found in inventory.' });
         if (!hasSource || String(previous?.product) !== productId) {
           newItems.push({
-            product: product._id, name: product.name, sku: product.sku, hsn: product.hsn, quantity,
+            product: product._id, name: product.name, sku: product.sku, hsn: product.hsn, quantity, packSize: Number(product.packSize || 1),
             returnedQuantity: 0, buyPrice: product.buyPrice, sellingPrice: product.sellingPrice,
             desiredProfit: product.desiredProfit, deliveryFee: product.deliveryFee, commissionRate: product.commissionRate,
             gstRate: product.gstRate, packagingCost: product.packagingCost, additionalCost: product.additionalCost,
             returnShippingCost: product.returnShippingCost,
           });
-          addStockChange(productId, -quantity);
+          addStockChange(productId, -quantity * Number(product.packSize || 1));
         }
       } else {
         const snapshot = previous.toObject();
         snapshot.quantity = quantity;
         newItems.push(snapshot);
-        addStockChange(productId, -(quantity - previous.returnedQuantity));
+        addStockChange(productId, -(quantity - previous.returnedQuantity) * Number(previous.packSize || 1));
       }
     }
     for (let index = 0; index < sale.items.length; index += 1) {
       if (!usedSourceIndexes.has(index)) {
         const previous = sale.items[index];
         if (previous.returnedQuantity > 0) return res.status(400).json({ message: 'A product with a processed return cannot be removed from the sale.' });
-        addStockChange(String(previous.product), previous.quantity);
+        addStockChange(String(previous.product), previous.quantity * Number(previous.packSize || 1));
       }
     }
     for (const [productId, change] of stockChanges) {
@@ -305,7 +306,7 @@ app.delete('/api/sales/:saleId', asyncRoute(async (req, res) => {
   const sale = await Sale.findById(req.params.saleId);
   if (!sale) return res.status(404).json({ message: 'Sale not found.' });
   for (const item of sale.items) {
-    const restoreQuantity = Math.max(0, item.quantity - item.returnedQuantity);
+    const restoreQuantity = Math.max(0, item.quantity - item.returnedQuantity) * Number(item.packSize || 1);
     if (!restoreQuantity) continue;
     const product = await Product.findById(item.product);
     if (product) {
@@ -328,7 +329,10 @@ app.get('/api/reports/monthly', asyncRoute(async (req, res) => {
   const rows = [];
   for (const sale of sales) {
     sale.items.forEach((item, index) => {
+      const packSize = Number(item.packSize || 1);
       const netQuantity = item.quantity - item.returnedQuantity;
+      const netUnits = netQuantity * packSize;
+      const returnedUnits = item.returnedQuantity * packSize;
       const totalPrice = round(item.sellingPrice * netQuantity);
       const gstRate = Number(item.gstRate || 0);
       const gstAmount = round(totalPrice * (gstRate / (100 + gstRate)));
@@ -343,8 +347,8 @@ app.get('/api/reports/monthly', asyncRoute(async (req, res) => {
       rows.push({
         id: `${sale._id}-${index}`, saleId: sale._id, itemIndex: index, productId: item.product,
         date: sale.saleDate || sale.createdAt, saleNumber: sale.saleNumber, platform: sale.platform,
-        name: item.name, sku: item.sku, hsn: item.hsn, quantity: item.quantity,
-        returnedQuantity: item.returnedQuantity, netQuantity, buyPrice: item.buyPrice,
+        name: item.name, sku: item.sku, hsn: item.hsn, quantity: item.quantity, packSize,
+        returnedQuantity: item.returnedQuantity, netQuantity, netUnits, returnedUnits, buyPrice: item.buyPrice,
         totalPrice, gstAmount, overallCost, deliveryFee: delivery, commission, packagingCost: packaging, additionalCost,
         returnShippingCost: returnShipping, gstRate, desiredProfit,
         profit: round(revenueExGst - overallCost - delivery - commission - packaging - additionalCost - returnShipping),
@@ -353,8 +357,8 @@ app.get('/api/reports/monthly', asyncRoute(async (req, res) => {
   }
   const totals = rows.reduce((acc, row) => ({
     orders: acc.orders,
-    units: acc.units + row.netQuantity,
-    returnedUnits: acc.returnedUnits + row.returnedQuantity,
+    units: acc.units + row.netUnits,
+    returnedUnits: acc.returnedUnits + row.returnedUnits,
     revenue: round(acc.revenue + row.totalPrice),
     cost: round(acc.cost + row.overallCost),
     delivery: round(acc.delivery + row.deliveryFee),

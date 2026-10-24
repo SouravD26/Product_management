@@ -22,9 +22,9 @@ The repository includes a Vercel serverless API entry point and builds the React
 
 ## Features
 
-- **Inventory:** manage product images, names, SKUs, HSN codes, categories, stock, buy and selling prices, desired profit, commission, GST, delivery, packaging, other spend, and return assumptions. Product images are resized in the browser and stored in MongoDB.
+- **Inventory:** manage product images, names, SKUs, HSN codes, categories, stock in individual units, pack sizes from one to four, prices and costs per pack, desired profit, commission, GST, delivery, packaging, other spend, and return assumptions. Product images are resized in the browser and stored in MongoDB.
 - **Pricing:** calculate a suggested selling price from desired profit, GST-inclusive selling price assumptions, commission, delivery, packaging, additional spend, and expected returns.
-- **Sales and returns:** record each sale with its marketplace (Flipkart, Amazon, Meesho, or Other) and sale date. Stock is reduced automatically. Processing a return updates the original sale and restores stock.
+- **Sales and returns:** record each sale with its marketplace (Flipkart, Amazon, Meesho, or Other) and sale date. Stock is reduced by the number of individual units in each pack. Processing a return updates the original sale and restores those units.
 - **Sales calendar:** view products sold by date and marketplace; select a day to see its orders and quantities.
 - **Sales editing and deletion:** update a sale's date, marketplace, products, or quantities. Delete a sale or a report line; unreturned units are restored to inventory.
 - **Monthly reports:** review revenue, product costs, fees, desired profit, and actual net profit for the selected month. Returns are reported in the original sale month. Product edits do not rewrite historical sales. Export the detail table to CSV.
