@@ -79,7 +79,7 @@ const optimizeProductImage = (file) => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 const api = async (path, options = {}) => {
-  const response = await fetch(`/api${path}`, { headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
+  const response = await fetch(`/api${path}`, { cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message || 'Could not complete the request.');
   return data;
@@ -184,7 +184,10 @@ function App() {
     title: 'Delete this product variant?',
     message: `Delete ${product.name} (${product.sku}) from inventory? Its other variants and their shared stock will remain. Products with sales history cannot be deleted.`,
     confirmLabel: 'Delete product',
-    action: () => run(() => api(`/products/${product._id}`, { method: 'DELETE' }), 'Product deleted from inventory.'),
+    action: () => run(async () => {
+      await api(`/products/${product._id}`, { method: 'DELETE' });
+      setProducts((current) => current.filter((item) => item._id !== product._id));
+    }, 'Product deleted from inventory.'),
   });
 
   const navItems = [
