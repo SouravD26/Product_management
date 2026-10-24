@@ -30,6 +30,11 @@ const validProductImage = (image) => image === undefined || image === '' || (
   typeof image === 'string' && image.length <= 2_000_000 &&
   /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image)
 );
+const stockGroupIdFor = (product) => String(product.stockGroupId || product._id);
+const stockGroupFilter = (stockGroupId) => ({ $or: [{ _id: stockGroupId }, { stockGroupId }] });
+const setStockGroupQuantity = async (stockGroupId, quantity) => {
+  await Product.updateMany(stockGroupFilter(stockGroupId), { $set: { quantity } });
+};
 
 // In Vercel's serverless runtime, connect on demand and reuse the connection
 // for warm function instances. Locally this also waits for MongoDB per request.
@@ -116,22 +121,61 @@ app.get('/api/products', asyncRoute(async (_req, res) => {
 
 app.post('/api/products', asyncRoute(async (req, res) => {
   if (!validProductImage(req.body.image)) return res.status(400).json({ message: 'Product image must be a PNG, JPEG, or WebP image under 2 MB after resizing.' });
-  const product = await Product.create(req.body);
+  const productId = new mongoose.Types.ObjectId();
+  let stockGroupId = String(productId);
+  let quantity = Number(req.body.quantity);
+  if (req.body.stockGroupId) {
+    const stockSource = await Product.findById(req.body.stockGroupId);
+    if (!stockSource) return res.status(404).json({ message: 'The selected shared stock item was not found.' });
+    stockGroupId = stockGroupIdFor(stockSource);
+    const stockOwner = await Product.findById(stockGroupId);
+    quantity = Number(stockOwner?.quantity ?? stockSource.quantity);
+  }
+  const product = await Product.create({ ...req.body, _id: productId, stockGroupId, quantity });
   res.status(201).json(product);
 }));
 
 app.put('/api/products/:id', asyncRoute(async (req, res) => {
   if (!validProductImage(req.body.image)) return res.status(400).json({ message: 'Product image must be a PNG, JPEG, or WebP image under 2 MB after resizing.' });
-  const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+  const existing = await Product.findById(req.params.id);
+  if (!existing) return res.status(404).json({ message: 'Product not found.' });
+  const currentGroupId = stockGroupIdFor(existing);
+  let nextGroupId = String(existing._id);
+  if (req.body.stockGroupId) {
+    const stockSource = await Product.findById(req.body.stockGroupId);
+    if (!stockSource) return res.status(404).json({ message: 'The selected shared stock item was not found.' });
+    nextGroupId = stockGroupIdFor(stockSource);
+  }
+  if (currentGroupId === String(existing._id) && nextGroupId !== currentGroupId) {
+    const sharedListings = await Product.countDocuments({ stockGroupId: currentGroupId, _id: { $ne: existing._id } });
+    if (sharedListings) return res.status(409).json({ message: 'This listing owns shared stock. Edit another listing to change its stock sharing.' });
+  }
+  const stockOwner = nextGroupId === currentGroupId
+    ? existing
+    : await Product.findById(nextGroupId);
+  if (!stockOwner) return res.status(404).json({ message: 'The selected shared stock item was not found.' });
+  const quantity = nextGroupId === currentGroupId ? Number(req.body.quantity) : Number(stockOwner.quantity);
+  const update = { ...req.body, stockGroupId: nextGroupId, quantity };
+  delete update._id;
+  delete update.__v;
+  delete update.createdAt;
+  const product = await Product.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
+  await setStockGroupQuantity(nextGroupId, quantity);
   res.json(product);
 }));
 
 app.delete('/api/products/:id', asyncRoute(async (req, res) => {
   const hasSales = await Sale.exists({ 'items.product': req.params.id });
   if (hasSales) return res.status(409).json({ message: 'This product has sales history and cannot be deleted. Set its stock to zero instead.' });
-  const product = await Product.findByIdAndDelete(req.params.id);
+  const product = await Product.findById(req.params.id);
   if (!product) return res.status(404).json({ message: 'Product not found.' });
+  const groupId = stockGroupIdFor(product);
+  if (groupId === String(product._id)) {
+    const replacement = await Product.findOne({ stockGroupId: groupId, _id: { $ne: product._id } }).sort({ createdAt: 1 });
+    if (replacement) await Product.updateMany(stockGroupFilter(groupId), { $set: { stockGroupId: replacement._id, quantity: product.quantity } });
+  }
+  await Product.findByIdAndDelete(req.params.id);
   res.json({ message: 'Product deleted.' });
 }));
 
@@ -156,17 +200,20 @@ app.post('/api/sales', asyncRoute(async (req, res) => {
     quantitiesByProduct.set(String(requested.productId), (quantitiesByProduct.get(String(requested.productId)) || 0) + quantity);
   }
   const products = new Map();
+  const unitsByStockGroup = new Map();
   for (const [productId, quantity] of quantitiesByProduct) {
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ message: `Product ${productId} was not found.` });
-    const unitsRequired = quantity * Number(product.packSize || 1);
-    if (product.quantity < unitsRequired) return res.status(400).json({ message: `Not enough stock for ${product.name}. ${quantity} pack(s) require ${unitsRequired} units; ${product.quantity} units are in stock.` });
     products.set(productId, product);
+    const groupId = stockGroupIdFor(product);
+    unitsByStockGroup.set(groupId, (unitsByStockGroup.get(groupId) || 0) + quantity * Number(product.packSize || 1));
   }
-  for (const [productId, quantity] of quantitiesByProduct) {
-    const product = products.get(productId);
-    product.quantity -= quantity * Number(product.packSize || 1);
-    await product.save();
+  for (const [groupId, unitsRequired] of unitsByStockGroup) {
+    const owner = await Product.findById(groupId);
+    const fallback = [...products.values()].find((product) => stockGroupIdFor(product) === groupId);
+    const stockOwner = owner || fallback;
+    if (!stockOwner || stockOwner.quantity < unitsRequired) return res.status(400).json({ message: `Not enough stock for ${fallback?.name || 'this product'}. ${unitsRequired} units are required; ${stockOwner?.quantity || 0} units are in stock.` });
+    await setStockGroupQuantity(groupId, stockOwner.quantity - unitsRequired);
   }
   for (const requested of req.body.items) {
     const product = products.get(String(requested.productId));
@@ -193,8 +240,9 @@ app.post('/api/sales/:saleId/returns', asyncRoute(async (req, res) => {
   if (item.returnedQuantity + quantity > item.quantity) return res.status(400).json({ message: 'Return quantity exceeds the number of packs sold.' });
   const product = await Product.findById(item.product);
   if (product) {
-    product.quantity += quantity * Number(item.packSize || 1);
-    await product.save();
+    const groupId = stockGroupIdFor(product);
+    const owner = await Product.findById(groupId) || product;
+    await setStockGroupQuantity(groupId, owner.quantity + quantity * Number(item.packSize || 1));
   }
   item.returnedQuantity += quantity;
   await sale.save();
@@ -211,8 +259,9 @@ app.delete('/api/sales/:saleId/items/:itemIndex', asyncRoute(async (req, res) =>
   if (unsoldQuantity > 0) {
     const product = await Product.findById(item.product);
     if (product) {
-      product.quantity += unsoldQuantity;
-      await product.save();
+      const groupId = stockGroupIdFor(product);
+      const owner = await Product.findById(groupId) || product;
+      await setStockGroupQuantity(groupId, owner.quantity + unsoldQuantity);
     }
   }
   if (sale.items.length === 0) {
@@ -237,10 +286,16 @@ app.patch('/api/sales/:saleId', asyncRoute(async (req, res) => {
     req.body.items.forEach((line) => { if (typeof line.productId === 'string' && mongoose.isValidObjectId(line.productId)) productIds.add(line.productId); });
     const stockProducts = await Product.find({ _id: { $in: [...productIds] } });
     const products = new Map(stockProducts.map((product) => [String(product._id), product]));
+    const groupIds = new Set(stockProducts.map(stockGroupIdFor));
+    const missingOwners = [...groupIds].filter((groupId) => !products.has(groupId));
+    if (missingOwners.length) {
+      const owners = await Product.find({ _id: { $in: missingOwners } });
+      owners.forEach((product) => products.set(String(product._id), product));
+    }
     const stockChanges = new Map();
     const newItems = [];
     const usedSourceIndexes = new Set();
-    const addStockChange = (productId, change) => stockChanges.set(productId, (stockChanges.get(productId) || 0) + change);
+    const addStockChange = (groupId, change) => stockChanges.set(groupId, (stockChanges.get(groupId) || 0) + change);
     for (const line of req.body.items) {
       if (!mongoose.isValidObjectId(line.productId)) return res.status(400).json({ message: 'Choose a valid product for every sale line.' });
       const productId = String(line.productId);
@@ -254,7 +309,8 @@ app.patch('/api/sales/:saleId', asyncRoute(async (req, res) => {
         previous = sale.items[line.sourceIndex];
         if (previous.returnedQuantity > 0 && String(previous.product) !== productId) return res.status(400).json({ message: 'A product with a processed return cannot be replaced.' });
         if (quantity < previous.returnedQuantity) return res.status(400).json({ message: 'Pack quantity cannot be less than the number already returned.' });
-        addStockChange(String(previous.product), (previous.quantity - previous.returnedQuantity) * Number(previous.packSize || 1));
+        const previousProduct = products.get(String(previous.product));
+        addStockChange(stockGroupIdFor(previousProduct), (previous.quantity - previous.returnedQuantity) * Number(previous.packSize || 1));
       }
       const product = products.get(productId);
       if (!previous || String(previous.product) !== productId) {
@@ -267,31 +323,31 @@ app.patch('/api/sales/:saleId', asyncRoute(async (req, res) => {
             gstRate: product.gstRate, packagingCost: product.packagingCost, additionalCost: product.additionalCost,
             returnShippingCost: product.returnShippingCost,
           });
-          addStockChange(productId, -quantity * Number(product.packSize || 1));
+          addStockChange(stockGroupIdFor(product), -quantity * Number(product.packSize || 1));
         }
       } else {
         const snapshot = previous.toObject();
         snapshot.quantity = quantity;
         newItems.push(snapshot);
-        addStockChange(productId, -(quantity - previous.returnedQuantity) * Number(previous.packSize || 1));
+        addStockChange(stockGroupIdFor(product), -(quantity - previous.returnedQuantity) * Number(previous.packSize || 1));
       }
     }
     for (let index = 0; index < sale.items.length; index += 1) {
       if (!usedSourceIndexes.has(index)) {
         const previous = sale.items[index];
         if (previous.returnedQuantity > 0) return res.status(400).json({ message: 'A product with a processed return cannot be removed from the sale.' });
-        addStockChange(String(previous.product), previous.quantity * Number(previous.packSize || 1));
+        const previousProduct = products.get(String(previous.product));
+        addStockChange(stockGroupIdFor(previousProduct), previous.quantity * Number(previous.packSize || 1));
       }
     }
-    for (const [productId, change] of stockChanges) {
-      const product = products.get(productId);
+    for (const [groupId, change] of stockChanges) {
+      const product = products.get(groupId);
       if (product && product.quantity + change < 0) return res.status(400).json({ message: `Not enough stock for ${product.name}.` });
     }
-    for (const [productId, change] of stockChanges) {
-      const product = products.get(productId);
+    for (const [groupId, change] of stockChanges) {
+      const product = products.get(groupId);
       if (product && change !== 0) {
-        product.quantity += change;
-        await product.save();
+        await setStockGroupQuantity(groupId, product.quantity + change);
       }
     }
     sale.items = newItems;
@@ -310,8 +366,9 @@ app.delete('/api/sales/:saleId', asyncRoute(async (req, res) => {
     if (!restoreQuantity) continue;
     const product = await Product.findById(item.product);
     if (product) {
-      product.quantity += restoreQuantity;
-      await product.save();
+      const groupId = stockGroupIdFor(product);
+      const owner = await Product.findById(groupId) || product;
+      await setStockGroupQuantity(groupId, owner.quantity + restoreQuantity);
     }
   }
   await Sale.deleteOne({ _id: sale._id });
