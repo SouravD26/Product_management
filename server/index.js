@@ -466,7 +466,9 @@ app.put('/api/settings', asyncRoute(async (req, res) => {
 
 app.get('/api/customers', asyncRoute(async (_req, res) => {
   // Start an empty customer list with one sample buyer so billing can be tried straight away.
-  if (!(await Customer.estimatedDocumentCount())) await Customer.create({ name: 'Sample Customer', gstin: '19CVEPD2252E1ZY', state: 'West Bengal' });
+  // The seed flag is claimed atomically, so parallel loads cannot add it twice and a deleted sample stays deleted.
+  const seeded = await Counter.findOneAndUpdate({ _id: 'customer-seed' }, { $setOnInsert: { seq: 1 } }, { upsert: true });
+  if (!seeded && !(await Customer.exists({ gstin: '19CVEPD2252E1ZY' }))) await Customer.create({ name: 'Sample Customer', gstin: '19CVEPD2252E1ZY', state: 'West Bengal' });
   res.json(await Customer.find().sort({ name: 1 }).lean());
 }));
 
@@ -475,6 +477,15 @@ app.post('/api/customers', asyncRoute(async (req, res) => {
   if (!String(name || '').trim()) return res.status(400).json({ message: 'Enter the customer name.' });
   if (gstin && !/^[0-9]{2}[A-Z0-9]{13}$/i.test(String(gstin).trim())) return res.status(400).json({ message: 'Customer GSTIN must be 15 characters.' });
   res.status(201).json(await Customer.create({ name, phone, gstin, address, state }));
+}));
+
+app.delete('/api/customers/:id', asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Customer not found.' });
+  const customer = await Customer.findByIdAndDelete(req.params.id);
+  if (!customer) return res.status(404).json({ message: 'Customer not found.' });
+  // Issued invoices keep their own copy of the customer, so only sale links are cleared.
+  await Sale.updateMany({ customer: customer._id }, { $set: { customer: null } });
+  res.json({ ok: true });
 }));
 
 app.get('/api/invoices', asyncRoute(async (_req, res) => {

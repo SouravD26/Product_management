@@ -195,6 +195,12 @@ function App() {
     const existing = invoices.find((invoice) => String(invoice.sale) === String(sale._id));
     if (existing) openInvoice(existing); else setModal({ type: 'invoice', sale });
   };
+  const deleteCustomer = (customer) => setConfirmDialog({
+    title: 'Delete this customer?',
+    message: `${customer.name} will be removed. Bills already made keep their details. This cannot be undone.`,
+    confirmLabel: 'Delete customer',
+    action: () => run(() => api(`/customers/${customer._id}`, { method: 'DELETE' }), 'Customer deleted.'),
+  });
   const deleteInvoice = (invoice) => setConfirmDialog({
     title: 'Delete this invoice?',
     message: `Invoice ${invoice.invoiceNumber} will be removed. Its number will not be reused. This cannot be undone.`,
@@ -241,7 +247,7 @@ function App() {
         {page === 'Sales & returns' && <Sales sales={sales} products={products} openSale={() => setModal({ type: 'sale' })} openEdit={(sale) => setModal({ type: 'editSale', sale })} deleteSale={deleteSale} openReturn={(sale, item) => setModal({ type: 'return', sale, item })} openInvoice={openSaleInvoice} invoicedSales={new Set(invoices.map((invoice) => String(invoice.sale)))} loading={loading} />}
         {page === 'Sales calendar' && <SalesCalendar sales={sales} month={month} changeMonth={chooseMonth} loading={loading} />}
         {page === 'Profit reports' && <Reports report={report} month={month} changeMonth={chooseMonth} onExport={exportReport} onDeleteItem={deleteReportItem} loading={loading} />}
-        {page === 'Invoices' && <Invoices invoices={invoices} sales={sales} customers={customers} openCustomer={() => setModal({ type: 'customer' })} openBill={() => setModal({ type: 'bill' })} loading={loading} onCreate={openSaleInvoice} onOpen={openInvoice} onDelete={deleteInvoice} openSettings={openSettings} />}
+        {page === 'Invoices' && <Invoices invoices={invoices} sales={sales} customers={customers} openCustomer={() => setModal({ type: 'customer' })} openBill={() => setModal({ type: 'bill' })} onDeleteCustomer={deleteCustomer} loading={loading} onCreate={openSaleInvoice} onOpen={openInvoice} onDelete={deleteInvoice} openSettings={openSettings} />}
       </div>
     </main>
     {modal?.type === 'bill' && <BillForm products={products} customers={customers} settings={settings} busy={busy} error={error} onCreate={createInvoice} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
