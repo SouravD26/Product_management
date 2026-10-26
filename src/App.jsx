@@ -202,7 +202,15 @@ function App() {
     title: 'Delete this customer?',
     message: `${customer.name} will be removed. Bills already made keep their details. This cannot be undone.`,
     confirmLabel: 'Delete customer',
-    action: () => run(() => api(`/customers/${customer._id}`, { method: 'DELETE' }), 'Customer deleted.'),
+    // Removed from the screen straight away instead of waiting for a full reload; put back if the server refuses.
+    action: async () => {
+      const previous = customers;
+      setCustomers((list) => list.filter((c) => c._id !== customer._id));
+      setSales((list) => list.map((sale) => String(sale.customer) === customer._id ? { ...sale, customer: null } : sale));
+      setNotice('Customer deleted.');
+      try { await api(`/customers/${customer._id}`, { method: 'DELETE' }); writeCache({ customers: previous.filter((c) => c._id !== customer._id) }); }
+      catch (err) { setCustomers(previous); setError(err.message); }
+    },
   });
   const deleteInvoice = (invoice) => setConfirmDialog({
     title: 'Delete this invoice?',
