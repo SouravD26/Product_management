@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, FileText, LoaderCircle, Plus, Printer, Search, Settings2, Trash2, X } from 'lucide-react';
+import { ArrowRight, FileText, LoaderCircle, Pencil, Plus, Printer, Search, Settings2, Trash2, X } from 'lucide-react';
 import logoUrl from './assets/logobr.png';
 import { dateLabel, money } from './shared.js';
 import './invoice.css';
@@ -96,10 +96,10 @@ export function InvoiceForm({ sale, products = [], customers = [], settings, bus
   </ModalShell>;
 }
 
-export function CustomerForm({ busy, error, onSave, close }) {
-  const [form, setForm] = useState({ name: '', phone: '', gstin: '', address: '', state: '' });
+export function CustomerForm({ customer, busy, error, onSave, close }) {
+  const [form, setForm] = useState(() => ({ name: '', phone: '', gstin: '', address: '', state: '', ...customer }));
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  return <ModalShell eyebrow="GST BILLING" title="Add customer" description="Pick this customer on a sale to make it ready for a GST bill." error={error} close={close}>
+  return <ModalShell eyebrow="GST BILLING" title={customer ? 'Edit customer' : 'Add customer'} description={customer ? 'Changes apply to new bills. Bills already made keep the old details.' : 'Pick this customer on a sale to make it ready for a GST bill.'} error={error} close={close}>
     <form onSubmit={(e) => { e.preventDefault(); onSave({ ...form, gstin: form.gstin.trim().toUpperCase() }); }}>
       <div className="form-grid">
         <label className="field"><span>Customer name <b>*</b></span><input required value={form.name} onChange={(e) => set('name', e.target.value)} /></label>
@@ -150,7 +150,7 @@ export function BillForm({ products = [], customers = [], settings, busy, error,
   </ModalShell>;
 }
 
-export function Invoices({ invoices, sales = [], customers = [], loading, onOpen, onDelete, onCreate, openSettings, openCustomer, openBill, onDeleteCustomer }) {
+export function Invoices({ invoices, sales = [], customers = [], loading, onOpen, onDelete, onCreate, openSettings, openCustomer, openBill, onEditCustomer, onDeleteCustomer }) {
   const [query, setQuery] = useState('');
   const invoiced = new Set(invoices.map((invoice) => String(invoice.sale)));
   const customerName = (id) => customers.find((c) => c._id === String(id))?.name || '—';
@@ -163,7 +163,7 @@ export function Invoices({ invoices, sales = [], customers = [], loading, onOpen
       const qty = (item) => item.quantity - item.returnedQuantity;
       return <tr key={sale._id}><td><strong>{sale.saleNumber}</strong></td><td>{dateLabel(sale.saleDate || sale.createdAt)}</td><td>{customerName(sale.customer)}</td><td>{lines.map((item) => `${item.name} × ${qty(item)}`).join(', ')}</td><td>{money(lines.reduce((sum, item) => sum + Number(item.mrp || item.sellingPrice) * qty(item), 0))}</td><td className="strong-cell">{money(lines.reduce((sum, item) => sum + item.sellingPrice * qty(item), 0))}</td><td><button className="button primary" type="button" onClick={() => onCreate(sale)}><FileText size={14} /> Create bill</button></td></tr>;
     })}</tbody></table></div></section>}
-    {customers.length > 0 && <section className="panel table-panel"><div className="table-toolbar"><div><h2>Customers <span className="count-badge">{customers.length}</span></h2><p>Pick one in "New bill" or on a sale.</p></div></div><div className="table-scroll"><table><thead><tr><th>NAME</th><th>GSTIN</th><th>PHONE</th><th>ADDRESS</th><th>STATE</th><th /></tr></thead><tbody>{customers.map((c) => <tr key={c._id}><td><strong>{c.name}</strong></td><td>{c.gstin || '—'}</td><td>{c.phone || '—'}</td><td>{c.address || '—'}</td><td>{stateLabel(c.state)}</td><td><button className="report-delete-button" type="button" aria-label={`Delete customer ${c.name}`} onClick={() => onDeleteCustomer(c)}><Trash2 size={14} /></button></td></tr>)}</tbody></table></div></section>}
+    {customers.length > 0 && <section className="panel table-panel"><div className="table-toolbar"><div><h2>Customers <span className="count-badge">{customers.length}</span></h2><p>Pick one in "New bill" or on a sale.</p></div></div><div className="table-scroll"><table><thead><tr><th>NAME</th><th>GSTIN</th><th>PHONE</th><th>ADDRESS</th><th>STATE</th><th /></tr></thead><tbody>{customers.map((c) => <tr key={c._id}><td><strong>{c.name}</strong></td><td>{c.gstin || '—'}</td><td>{c.phone || '—'}</td><td>{c.address || '—'}</td><td>{stateLabel(c.state)}</td><td><div className="invoice-row-actions"><button className="button secondary" type="button" onClick={() => onEditCustomer(c)}><Pencil size={14} /> Edit</button><button className="report-delete-button" type="button" aria-label={`Delete customer ${c.name}`} onClick={() => onDeleteCustomer(c)}><Trash2 size={14} /></button></div></td></tr>)}</tbody></table></div></section>}
     <section className="panel table-panel"><div className="table-toolbar"><div><h2>All invoices <span className="count-badge">{invoices.length}</span></h2><p>Each invoice keeps the details from the day it was issued.</p></div><label className="search-box"><Search size={15} /><input placeholder="Search invoices..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div>
       {loading ? <div className="loading-state"><LoaderCircle size={19} className="spinning" /> Loading invoices…</div> : filtered.length ? <div className="table-scroll"><table><thead><tr><th>INVOICE NO</th><th>DATE</th><th>CUSTOMER</th><th>SALE</th><th>TAXABLE</th><th>GST</th><th>TOTAL</th><th /></tr></thead><tbody>{filtered.map((invoice) => <tr key={invoice._id}><td><strong>{invoice.invoiceNumber}</strong></td><td>{dateLabel(invoice.invoiceDate)}</td><td>{invoice.customer?.name}{invoice.customer?.gstin && <small>{invoice.customer.gstin}</small>}</td><td>{invoice.saleNumber || 'Direct bill'}</td><td>{money(invoice.totals?.taxableValue)}</td><td>{money(invoice.totals?.tax)}</td><td className="strong-cell">{money(invoice.totals?.grandTotal)}</td><td><div className="invoice-row-actions"><button className="button secondary" type="button" onClick={() => onOpen(invoice)}><FileText size={14} /> View</button><button className="button primary" type="button" onClick={() => onOpen(invoice, true)}><Printer size={14} /> Print</button><button className="report-delete-button" type="button" aria-label={`Delete invoice ${invoice.invoiceNumber}`} onClick={() => onDelete(invoice)}><Trash2 size={14} /></button></div></td></tr>)}</tbody></table></div>
         : <div className="empty-state"><div className="empty-icon"><FileText size={21} /></div><strong>{query ? 'No matching invoices' : 'No invoices yet'}</strong><p>{query ? 'Try a different search.' : 'Click "New bill", pick a customer and products, and the bill shows here.'}</p></div>}

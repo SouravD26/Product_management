@@ -198,6 +198,17 @@ function App() {
     const existing = invoices.find((invoice) => String(invoice.sale) === String(sale._id));
     if (existing) openInvoice(existing); else setModal({ type: 'invoice', sale });
   };
+  // Saves without reloading the whole workspace, so the list updates as soon as the server answers.
+  const saveCustomer = async (data) => {
+    setBusy(true); setError('');
+    try {
+      const saved = await api(data._id ? `/customers/${data._id}` : '/customers', { method: data._id ? 'PUT' : 'POST', body: JSON.stringify(data) });
+      const list = (data._id ? customers.map((c) => c._id === saved._id ? saved : c) : [...customers, saved]).sort((a, b) => a.name.localeCompare(b.name));
+      setCustomers(list); writeCache({ customers: list });
+      setModal(null); setNotice(data._id ? 'Customer updated.' : 'Customer added.');
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  };
   const deleteCustomer = (customer) => setConfirmDialog({
     title: 'Delete this customer?',
     message: `${customer.name} will be removed. Bills already made keep their details. This cannot be undone.`,
@@ -258,11 +269,11 @@ function App() {
         {page === 'Sales & returns' && <Sales sales={sales} products={products} openSale={() => setModal({ type: 'sale' })} openEdit={(sale) => setModal({ type: 'editSale', sale })} deleteSale={deleteSale} openReturn={(sale, item) => setModal({ type: 'return', sale, item })} openInvoice={openSaleInvoice} invoicedSales={new Set(invoices.map((invoice) => String(invoice.sale)))} loading={loading} />}
         {page === 'Sales calendar' && <SalesCalendar sales={sales} month={month} changeMonth={chooseMonth} loading={loading} />}
         {page === 'Profit reports' && <Reports report={report} month={month} changeMonth={chooseMonth} onExport={exportReport} onDeleteItem={deleteReportItem} loading={loading} />}
-        {page === 'Invoices' && <Invoices invoices={invoices} sales={sales} customers={customers} openCustomer={() => setModal({ type: 'customer' })} openBill={() => setModal({ type: 'bill' })} onDeleteCustomer={deleteCustomer} loading={loading} onCreate={openSaleInvoice} onOpen={openInvoice} onDelete={deleteInvoice} openSettings={openSettings} />}
+        {page === 'Invoices' && <Invoices invoices={invoices} sales={sales} customers={customers} openCustomer={() => setModal({ type: 'customer' })} openBill={() => setModal({ type: 'bill' })} onEditCustomer={(customer) => setModal({ type: 'customer', customer })} onDeleteCustomer={deleteCustomer} loading={loading} onCreate={openSaleInvoice} onOpen={openInvoice} onDelete={deleteInvoice} openSettings={openSettings} />}
       </div>
     </main>
     {modal?.type === 'bill' && <BillForm products={products} customers={customers} settings={settings} busy={busy} error={error} onCreate={createInvoice} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
-    {modal?.type === 'customer' && <CustomerForm busy={busy} error={error} onSave={(data) => run(() => api('/customers', { method: 'POST', body: JSON.stringify(data) }), 'Customer added.')} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
+    {modal?.type === 'customer' && <CustomerForm customer={modal.customer} busy={busy} error={error} onSave={saveCustomer} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
     {modal?.type === 'settings' && <SettingsForm settings={settings || {}} busy={busy} error={error} onSave={saveSettings} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
     {modal?.type === 'invoice' && <InvoiceForm sale={modal.sale} products={products} customers={customers} settings={settings} busy={busy} error={error} onCreate={createInvoice} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
     {viewInvoice && <InvoiceView invoice={viewInvoice} close={() => setViewInvoice(null)} />}

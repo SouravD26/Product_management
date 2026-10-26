@@ -479,6 +479,16 @@ app.post('/api/customers', asyncRoute(async (req, res) => {
   res.status(201).json(await Customer.create({ name, phone, gstin, address, state }));
 }));
 
+app.put('/api/customers/:id', asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Customer not found.' });
+  const { name, phone = '', gstin = '', address = '', state = '' } = req.body;
+  if (!String(name || '').trim()) return res.status(400).json({ message: 'Enter the customer name.' });
+  if (gstin && !/^[0-9]{2}[A-Z0-9]{13}$/i.test(String(gstin).trim())) return res.status(400).json({ message: 'Customer GSTIN must be 15 characters.' });
+  const customer = await Customer.findByIdAndUpdate(req.params.id, { name, phone, gstin, address, state }, { new: true, runValidators: true }).lean();
+  if (!customer) return res.status(404).json({ message: 'Customer not found.' });
+  res.json(customer);
+}));
+
 app.delete('/api/customers/:id', asyncRoute(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Customer not found.' });
   const customer = await Customer.findByIdAndDelete(req.params.id);
