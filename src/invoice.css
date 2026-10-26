@@ -66,3 +66,8 @@
 .invoice-lines small { display: block; color: #6b7280; }
 .invoice-lines input, .invoice-lines select { width: 100%; min-width: 64px; }
 .invoice-lines > .button { margin-top: 8px; }
+@media print{
+  html,body,#root,.app-shell{height:auto!important;min-height:0!important;overflow:visible!important;background:#fff!important}
+  body.printing-invoice .invoice-overlay{display:block!important;inset:auto}
+  .invoice-sheet{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}

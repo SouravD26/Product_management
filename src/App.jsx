@@ -185,8 +185,11 @@ function App() {
     setViewInvoice(invoice);
   }, 'GST invoice ready.');
   const saveSettings = (data) => run(async () => setSettings(await api('/settings', { method: 'PUT', body: JSON.stringify(data) })), 'Business settings saved.');
-  const openInvoice = async (invoice) => {
-    try { setViewInvoice(await api(`/invoices/${invoice._id}`)); } catch (err) { setError(err.message); }
+  // The list already holds everything the bill prints, so it opens at once; the full copy is fetched behind it.
+  const openInvoice = async (invoice, autoPrint = false) => {
+    if (invoice.items) setViewInvoice({ ...invoice, autoPrint });
+    try { const full = await api(`/invoices/${invoice._id}`); setViewInvoice((current) => current && current._id === full._id ? { ...full, autoPrint } : current); }
+    catch (err) { if (!invoice.items) setError(err.message); }
   };
   const openSettings = async () => {
     try { const data = settings || await api('/settings'); setSettings(data); setModal({ type: 'settings' }); } catch (err) { setError(err.message); }
