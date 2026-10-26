@@ -22,3 +22,13 @@
 [dev:client]   [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.4.212:[1m5173[22m/[39m
 [dev:client]   [32m➜[39m  [1mNetwork[22m: [36mhttp://172.22.32.1:[1m5173[22m/[39m
 [dev:server] Meridian API listening on http://localhost:5000
+[dev:server] [32m[nodemon] restarting due to changes...[39m
+[dev:server] [32m[nodemon] restarting due to changes...[39m
+[dev:server] [32m[nodemon] restarting due to changes...[39m
+[dev:server] [32m[nodemon] restarting due to changes...[39m
+[dev:server] [32m[nodemon] starting `node server/index.js`[39m
+[dev:server] Meridian API listening on http://localhost:5000
+[dev:server] [32m[nodemon] restarting due to changes...[39m
+[dev:server] [32m[nodemon] restarting due to changes...[39m
+[dev:server] [32m[nodemon] starting `node server/index.js`[39m
+[dev:server] Meridian API listening on http://localhost:5000

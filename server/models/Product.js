@@ -11,6 +11,7 @@ const productSchema = new mongoose.Schema({
   stockGroupId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', default: null, index: true },
   buyPrice: { type: Number, required: true, min: 0 },
   sellingPrice: { type: Number, required: true, min: 0 },
+  mrp: { type: Number, min: 0, default: 0 },
   desiredProfit: { type: Number, min: 0, default: 0 },
   deliveryFee: { type: Number, min: 0, default: 0 },
   commissionRate: { type: Number, min: 0, max: 100, default: 15 },

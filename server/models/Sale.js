@@ -10,6 +10,7 @@ const saleItemSchema = new mongoose.Schema({
   returnedQuantity: { type: Number, min: 0, default: 0 },
   buyPrice: { type: Number, required: true },
   sellingPrice: { type: Number, required: true },
+  mrp: { type: Number, default: 0 },
   desiredProfit: { type: Number, default: 0 },
   deliveryFee: { type: Number, default: 0 },
   commissionRate: { type: Number, default: 15 },

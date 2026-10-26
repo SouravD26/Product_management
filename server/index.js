@@ -225,7 +225,7 @@ app.post('/api/sales', asyncRoute(async (req, res) => {
     const quantity = Number(requested.quantity);
     items.push({
       product: product._id, name: product.name, sku: product.sku, hsn: product.hsn, quantity, packSize: Number(product.packSize || 1),
-      buyPrice: product.buyPrice, sellingPrice: product.sellingPrice, desiredProfit: product.desiredProfit, deliveryFee: product.deliveryFee,
+      buyPrice: product.buyPrice, sellingPrice: product.sellingPrice, mrp: product.mrp, desiredProfit: product.desiredProfit, deliveryFee: product.deliveryFee,
       commissionRate: product.commissionRate, gstRate: product.gstRate, packagingCost: product.packagingCost,
       additionalCost: product.additionalCost,
       returnShippingCost: product.returnShippingCost,
@@ -323,7 +323,7 @@ app.patch('/api/sales/:saleId', asyncRoute(async (req, res) => {
         if (!hasSource || String(previous?.product) !== productId) {
           newItems.push({
             product: product._id, name: product.name, sku: product.sku, hsn: product.hsn, quantity, packSize: Number(product.packSize || 1),
-            returnedQuantity: 0, buyPrice: product.buyPrice, sellingPrice: product.sellingPrice,
+            returnedQuantity: 0, buyPrice: product.buyPrice, sellingPrice: product.sellingPrice, mrp: product.mrp,
             desiredProfit: product.desiredProfit, deliveryFee: product.deliveryFee, commissionRate: product.commissionRate,
             gstRate: product.gstRate, packagingCost: product.packagingCost, additionalCost: product.additionalCost,
             returnShippingCost: product.returnShippingCost,
@@ -483,6 +483,8 @@ app.post('/api/invoices', asyncRoute(async (req, res) => {
   if (existing) return res.json(existing);
   const sale = await Sale.findById(saleId).lean();
   if (!sale) return res.status(404).json({ message: 'Sale not found.' });
+  // Older sales have no MRP saved; fall back to the product's current MRP.
+  const saleProducts = new Map((await Product.find({ _id: { $in: sale.items.map((item) => item.product) } }).select('mrp').lean()).map((product) => [String(product._id), product.mrp]));
   const seller = await getSettings();
   const date = invoiceDate ? new Date(invoiceDate) : new Date();
   if (Number.isNaN(date.getTime())) return res.status(400).json({ message: 'Enter a valid invoice date.' });
@@ -499,6 +501,7 @@ app.post('/api/invoices', asyncRoute(async (req, res) => {
     const half = round(tax / 2);
     return {
       name: item.name, sku: item.sku, hsn: item.hsn, packSize: item.packSize, quantity, gstRate, total,
+      price: item.sellingPrice, mrp: Number(item.mrp || saleProducts.get(String(item.product)) || item.sellingPrice),
       rate: round(taxableValue / quantity), taxableValue,
       cgst: interState ? 0 : half, sgst: interState ? 0 : round(tax - half), igst: interState ? tax : 0,
     };

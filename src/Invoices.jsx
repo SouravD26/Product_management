@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, FileText, LoaderCircle, Package, Plus, Printer, Search, Settings2, Trash2, X } from 'lucide-react';
-import { dateLabel, money, optimizeProductImage } from './shared.js';
+import { ArrowRight, FileText, LoaderCircle, Printer, Search, Settings2, Trash2, X } from 'lucide-react';
+import logoUrl from './assets/logobr.png';
+import { dateLabel, money } from './shared.js';
 import './invoice.css';
 
 export const INDIAN_STATES = [
@@ -44,19 +45,10 @@ function StateSelect({ value, onChange, required }) {
 
 export function SettingsForm({ settings, busy, error, onSave, close }) {
   const [form, setForm] = useState(() => ({ ...settings }));
-  const [logoError, setLogoError] = useState('');
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  const chooseLogo = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setLogoError('');
-    try { set('logo', await optimizeProductImage(file, 400)); } catch (err) { setLogoError(err.message); }
-  };
-  return <ModalShell eyebrow="GST BILLING" title="Business settings" description="These details are printed on every new GST invoice." error={error || logoError} close={close}>
-    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...form, gstin: form.gstin.trim().toUpperCase() }); }}>
+  return <ModalShell eyebrow="GST BILLING" title="Business settings" description="These details are printed on every new GST invoice." error={error} close={close}>
+    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...form, logo: undefined, gstin: (form.gstin || '').trim().toUpperCase() }); }}>
       <div className="form-grid">
-        <label className="field full-field image-field"><span>Logo <small>printed on the invoice header</small></span><div className="image-uploader"><div className="image-preview">{form.logo ? <img src={form.logo} alt="Logo preview" /> : <Package size={23} />}</div><div className="image-uploader-copy"><strong>Business logo</strong><small>JPG, PNG or WebP.</small><label className="button secondary image-upload-button"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseLogo} /><Plus size={14} />{form.logo ? 'Change logo' : 'Upload logo'}</label></div>{form.logo && <button type="button" className="remove-image-button" onClick={() => set('logo', '')}>Remove</button>}</div></label>
         <label className="field"><span>Business name <b>*</b></span><input required value={form.businessName} onChange={(e) => set('businessName', e.target.value)} /></label>
         <label className="field"><span>GSTIN</span><input value={form.gstin} maxLength={15} placeholder="15-character GSTIN" onChange={(e) => { const gstin = e.target.value.toUpperCase(); setForm((current) => ({ ...current, gstin, state: current.state || stateFromGstin(gstin) })); }} /></label>
         <label className="field full-field"><span>Registered address <b>*</b></span><textarea required rows={2} value={form.address} onChange={(e) => set('address', e.target.value)} /></label>
@@ -126,7 +118,7 @@ export function InvoiceView({ invoice, close }) {
     <div className="invoice-toolbar"><strong>{invoice.invoiceNumber}</strong><div><button className="button primary" onClick={() => window.print()}><Printer size={15} /> Print</button><button className="button secondary" onClick={close}><X size={15} /> Close</button></div></div>
     <article className="invoice-sheet">
       <header className="inv-header">
-        <div className="inv-seller">{seller.logo && <img src={seller.logo} alt="" className="inv-logo" />}<div><h1>{seller.businessName}</h1><p>{seller.address}</p><p>{[seller.phone, seller.email].filter(Boolean).join(' · ')}</p>{seller.gstin && <p><b>GSTIN:</b> {seller.gstin}</p>}<p><b>State:</b> {stateLabel(seller.state)}</p></div></div>
+        <div className="inv-seller"><img src={logoUrl} alt={`${seller.businessName} logo`} className="inv-logo" /><div><h1>{seller.businessName}</h1><p>{seller.address}</p><p>{[seller.phone, seller.email].filter(Boolean).join(' · ')}</p>{seller.gstin && <p><b>GSTIN:</b> {seller.gstin}</p>}<p><b>State:</b> {stateLabel(seller.state)}</p></div></div>
         <div className="inv-title"><h2>TAX INVOICE</h2><span>Original for recipient</span></div>
       </header>
       <section className="inv-meta">
@@ -134,16 +126,17 @@ export function InvoiceView({ invoice, close }) {
         <dl><dt>Invoice no.</dt><dd>{invoice.invoiceNumber}</dd><dt>Invoice date</dt><dd>{dateLabel(invoice.invoiceDate)}</dd><dt>Order ref.</dt><dd>{invoice.saleNumber || '—'}</dd><dt>Supply type</dt><dd>{interState ? 'Inter-state (IGST)' : 'Intra-state (CGST + SGST)'}</dd></dl>
       </section>
       <table className="inv-table">
-        <thead><tr><th>#</th><th>Item</th><th>HSN</th><th>Qty</th><th>Rate</th><th>Taxable value</th><th>GST %</th>{interState ? <th>IGST</th> : <><th>CGST</th><th>SGST</th></>}<th>Amount</th></tr></thead>
-        <tbody>{invoice.items.map((item, index) => <tr key={index}><td>{index + 1}</td><td><strong>{item.name}</strong><small>SKU {item.sku}{item.packSize > 1 ? ` · pack of ${item.packSize}` : ''}</small></td><td>{item.hsn || '—'}</td><td>{item.quantity}</td><td>{money(item.rate)}</td><td>{money(item.taxableValue)}</td><td>{item.gstRate}%</td>{interState ? <td>{money(item.igst)}</td> : <><td>{money(item.cgst)}</td><td>{money(item.sgst)}</td></>}<td>{money(item.total)}</td></tr>)}</tbody>
+        <thead><tr><th>#</th><th>Item</th><th>HSN</th><th>MRP</th><th>Price</th><th>Qty</th><th>Taxable value</th><th>GST</th><th>Total</th></tr></thead>
+        <tbody>{invoice.items.map((item, index) => <tr key={index}><td>{index + 1}</td><td><strong>{item.name}</strong><small>SKU {item.sku}{item.packSize > 1 ? ` · pack of ${item.packSize}` : ''}</small></td><td>{item.hsn || '—'}</td><td>{item.mrp ? money(item.mrp) : '—'}</td><td>{money(item.price || item.total / item.quantity)}</td><td>{item.quantity}</td><td>{money(item.taxableValue)}</td><td>{money(item.cgst + item.sgst + item.igst)}<small>@ {item.gstRate}%</small></td><td className="inv-strong">{money(item.total)}</td></tr>)}</tbody>
       </table>
       <section className="inv-summary">
         <div className="inv-left">
           <table className="inv-tax-table"><thead><tr><th>GST %</th><th>Taxable</th>{interState ? <th>IGST</th> : <><th>CGST</th><th>SGST</th></>}</tr></thead><tbody>{rateGroups.map((group) => <tr key={group.gstRate}><td>{group.gstRate}%</td><td>{money(group.taxableValue)}</td>{interState ? <td>{money(group.igst)}</td> : <><td>{money(group.cgst)}</td><td>{money(group.sgst)}</td></>}</tr>)}</tbody></table>
+          {invoice.items.some((item) => item.mrp > (item.price || 0)) && <p className="inv-savings">You saved {money(invoice.items.reduce((sum, item) => sum + Math.max(0, (item.mrp || 0) - (item.price || 0)) * item.quantity, 0))} on MRP</p>}
           <p className="inv-words"><b>Amount in words:</b> {amountInWords(totals.grandTotal)}</p>
           {seller.bankDetails && <div className="inv-note"><h3>Bank / UPI details</h3><p>{seller.bankDetails}</p></div>}
         </div>
-        <dl className="inv-totals"><dt>Taxable value</dt><dd>{money(totals.taxableValue)}</dd>{interState ? <><dt>IGST</dt><dd>{money(totals.igst)}</dd></> : <><dt>CGST</dt><dd>{money(totals.cgst)}</dd><dt>SGST</dt><dd>{money(totals.sgst)}</dd></>}<dt>Round off</dt><dd>{money(totals.roundOff)}</dd><dt className="inv-grand">Grand total</dt><dd className="inv-grand">{money(totals.grandTotal)}</dd></dl>
+        <dl className="inv-totals"><dt>Total quantity</dt><dd>{invoice.items.reduce((sum, item) => sum + item.quantity, 0)}</dd><dt>Taxable value</dt><dd>{money(totals.taxableValue)}</dd>{interState ? <><dt>IGST</dt><dd>{money(totals.igst)}</dd></> : <><dt>CGST</dt><dd>{money(totals.cgst)}</dd><dt>SGST</dt><dd>{money(totals.sgst)}</dd></>}<dt>Round off</dt><dd>{money(totals.roundOff)}</dd><dt className="inv-grand">Grand total</dt><dd className="inv-grand">{money(totals.grandTotal)}</dd></dl>
       </section>
       <footer className="inv-footer">
         <div className="inv-note">{seller.terms && <><h3>Terms &amp; conditions</h3><p>{seller.terms}</p></>}</div>

@@ -56,3 +56,6 @@
   .invoice-sheet{box-shadow:none;max-width:none;padding:0;border-radius:0}
   .inv-table tr{break-inside:avoid}
 }
+.inv-strong{font-weight:700}
+.inv-table td small{text-align:right}
+.inv-savings{margin:6px 0 0!important;color:#1d7a46;font-weight:600}
