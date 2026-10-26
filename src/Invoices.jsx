@@ -113,22 +113,60 @@ export function CustomerForm({ busy, error, onSave, close }) {
   </ModalShell>;
 }
 
-export function Invoices({ invoices, sales = [], customers = [], loading, onOpen, onDelete, onCreate, openSettings, openCustomer }) {
+export function BillForm({ products = [], customers = [], settings, busy, error, onCreate, close }) {
+  const [customerId, setCustomerId] = useState(customers[0]?._id || '');
+  const [invoiceDate, setInvoiceDate] = useState(localDate);
+  const [lines, setLines] = useState([{ productId: '', quantity: 1, price: '' }]);
+  const customer = customers.find((c) => c._id === customerId);
+  const setLine = (index, patch) => setLines((current) => current.map((line, i) => i === index ? { ...line, ...patch } : line));
+  const total = lines.reduce((sum, line) => sum + (Number(line.price) || 0) * (Number(line.quantity) || 0), 0);
+  const interState = Boolean(settings?.state && customer?.state && settings.state !== customer.state);
+  return <ModalShell eyebrow="GST BILLING" title="New bill" description="Choose a customer and products. Prices are GST-inclusive." error={error} close={close}>
+    {!customers.length && <div className="modal-error">Add a customer first with the "Add customer" button.</div>}
+    <form onSubmit={(e) => { e.preventDefault(); onCreate({ invoiceDate, customer: { name: customer.name, phone: customer.phone, gstin: customer.gstin, address: customer.address, state: customer.state }, items: lines.map((line) => ({ productId: line.productId, quantity: Number(line.quantity), price: Number(line.price) })) }); }}>
+      <div className="form-grid">
+        <label className="field"><span>Customer <b>*</b></span><select required value={customerId} onChange={(e) => setCustomerId(e.target.value)}><option value="">Choose customer</option>{customers.map((c) => <option key={c._id} value={c._id}>{c.name}{c.gstin ? ` · ${c.gstin}` : ''}</option>)}</select></label>
+        <label className="field"><span>Invoice date <b>*</b></span><input type="date" required value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} /></label>
+        {customer && <p className="form-note full-field"><b>{customer.name}</b>{customer.address ? ` · ${customer.address}` : ''}{customer.gstin ? ` · GSTIN ${customer.gstin}` : ''} · {stateLabel(customer.state)} · {interState ? 'IGST' : 'CGST + SGST'}</p>}
+        <div className="full-field invoice-lines"><table><thead><tr><th>Product</th><th>HSN</th><th>MRP</th><th>Price</th><th>Qty</th><th>GST</th><th>Total</th><th /></tr></thead><tbody>{lines.map((line, index) => {
+          const product = products.find((p) => p._id === line.productId);
+          return <tr key={index}>
+            <td><select required value={line.productId} onChange={(e) => { const next = products.find((p) => p._id === e.target.value); setLine(index, { productId: e.target.value, price: next ? next.sellingPrice : '' }); }}><option value="">Select product…</option>{products.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>)}</select></td>
+            <td>{product?.hsn || '—'}</td>
+            <td>{product ? money(product.mrp || product.sellingPrice) : '—'}</td>
+            <td><input type="number" required min="0" step="0.01" value={line.price} onChange={(e) => setLine(index, { price: e.target.value })} /></td>
+            <td><input type="number" required min="1" step="1" value={line.quantity} onChange={(e) => setLine(index, { quantity: e.target.value })} /></td>
+            <td>{product ? `${product.gstRate || 0}%` : '—'}</td>
+            <td>{money((Number(line.price) || 0) * (Number(line.quantity) || 0))}</td>
+            <td>{lines.length > 1 && <button type="button" className="modal-close" aria-label="Remove line" onClick={() => setLines(lines.filter((_, i) => i !== index))}><X size={14} /></button>}</td>
+          </tr>;
+        })}</tbody></table>
+          <button type="button" className="button secondary" onClick={() => setLines([...lines, { productId: '', quantity: 1, price: '' }])}><Plus size={14} /> Add product</button>
+          <p className="form-note"><b>Bill total: {money(total)}</b> · Stock is not changed by a bill made here.</p>
+        </div>
+      </div>
+      <Footer busy={busy || !customers.length} close={close} submit="Create bill" />
+    </form>
+  </ModalShell>;
+}
+
+export function Invoices({ invoices, sales = [], customers = [], loading, onOpen, onDelete, onCreate, openSettings, openCustomer, openBill }) {
   const [query, setQuery] = useState('');
   const invoiced = new Set(invoices.map((invoice) => String(invoice.sale)));
   const customerName = (id) => customers.find((c) => c._id === String(id))?.name || '—';
   const pending = sales.filter((sale) => sale.customer && !invoiced.has(String(sale._id)) && sale.items.some((item) => item.quantity > item.returnedQuantity));
   const filtered = invoices.filter((invoice) => `${invoice.invoiceNumber} ${invoice.customer?.name} ${invoice.saleNumber}`.toLowerCase().includes(query.toLowerCase()));
   return <>
-    <div className="page-heading"><div><div className="eyebrow">GST BILLING</div><h1>Invoices</h1><p>Create a GST invoice from any sale in Sales &amp; returns, then print it.</p></div><div className="heading-actions"><button className="button secondary" onClick={openCustomer}><Plus size={16} /> Add customer</button><button className="button secondary" onClick={openSettings}><Settings2 size={16} /> Business settings</button></div></div>
+    <div className="page-heading"><div><div className="eyebrow">GST BILLING</div><h1>Invoices</h1><p>Make a GST bill for a customer, then view and print it from the list below.</p></div><div className="heading-actions"><button className="button primary" onClick={openBill}><FileText size={16} /> New bill</button><button className="button secondary" onClick={openCustomer}><Plus size={16} /> Add customer</button><button className="button secondary" onClick={openSettings}><Settings2 size={16} /> Business settings</button></div></div>
     {pending.length > 0 && <section className="panel table-panel"><div className="table-toolbar"><div><h2>Ready to bill <span className="count-badge">{pending.length}</span></h2><p>Customer sales without a GST invoice yet. Marketplace orders are not listed.</p></div></div><div className="table-scroll"><table><thead><tr><th>SALE</th><th>DATE</th><th>CUSTOMER</th><th>ITEMS</th><th>MRP</th><th>NET SALE</th><th /></tr></thead><tbody>{pending.map((sale) => {
       const lines = sale.items.filter((item) => item.quantity > item.returnedQuantity);
       const qty = (item) => item.quantity - item.returnedQuantity;
       return <tr key={sale._id}><td><strong>{sale.saleNumber}</strong></td><td>{dateLabel(sale.saleDate || sale.createdAt)}</td><td>{customerName(sale.customer)}</td><td>{lines.map((item) => `${item.name} × ${qty(item)}`).join(', ')}</td><td>{money(lines.reduce((sum, item) => sum + Number(item.mrp || item.sellingPrice) * qty(item), 0))}</td><td className="strong-cell">{money(lines.reduce((sum, item) => sum + item.sellingPrice * qty(item), 0))}</td><td><button className="button primary" type="button" onClick={() => onCreate(sale)}><FileText size={14} /> Create bill</button></td></tr>;
     })}</tbody></table></div></section>}
+    {customers.length > 0 && <section className="panel table-panel"><div className="table-toolbar"><div><h2>Customers <span className="count-badge">{customers.length}</span></h2><p>Pick one in "New bill" or on a sale.</p></div></div><div className="table-scroll"><table><thead><tr><th>NAME</th><th>GSTIN</th><th>PHONE</th><th>ADDRESS</th><th>STATE</th></tr></thead><tbody>{customers.map((c) => <tr key={c._id}><td><strong>{c.name}</strong></td><td>{c.gstin || '—'}</td><td>{c.phone || '—'}</td><td>{c.address || '—'}</td><td>{stateLabel(c.state)}</td></tr>)}</tbody></table></div></section>}
     <section className="panel table-panel"><div className="table-toolbar"><div><h2>All invoices <span className="count-badge">{invoices.length}</span></h2><p>Each invoice keeps the details from the day it was issued.</p></div><label className="search-box"><Search size={15} /><input placeholder="Search invoices..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div>
-      {loading ? <div className="loading-state"><LoaderCircle size={19} className="spinning" /> Loading invoices…</div> : filtered.length ? <div className="table-scroll"><table><thead><tr><th>INVOICE NO</th><th>DATE</th><th>CUSTOMER</th><th>SALE</th><th>TAXABLE</th><th>GST</th><th>TOTAL</th><th /></tr></thead><tbody>{filtered.map((invoice) => <tr key={invoice._id}><td><strong>{invoice.invoiceNumber}</strong></td><td>{dateLabel(invoice.invoiceDate)}</td><td>{invoice.customer?.name}{invoice.customer?.gstin && <small>{invoice.customer.gstin}</small>}</td><td>{invoice.saleNumber}</td><td>{money(invoice.totals?.taxableValue)}</td><td>{money(invoice.totals?.tax)}</td><td className="strong-cell">{money(invoice.totals?.grandTotal)}</td><td><div className="invoice-row-actions"><button className="button secondary" type="button" onClick={() => onOpen(invoice)}><Printer size={14} /> View / print</button><button className="report-delete-button" type="button" aria-label={`Delete invoice ${invoice.invoiceNumber}`} onClick={() => onDelete(invoice)}><Trash2 size={14} /></button></div></td></tr>)}</tbody></table></div>
-        : <div className="empty-state"><div className="empty-icon"><FileText size={21} /></div><strong>{query ? 'No matching invoices' : 'No invoices yet'}</strong><p>{query ? 'Try a different search.' : 'Pick a customer on a sale in Sales & returns, then create its bill above.'}</p></div>}
+      {loading ? <div className="loading-state"><LoaderCircle size={19} className="spinning" /> Loading invoices…</div> : filtered.length ? <div className="table-scroll"><table><thead><tr><th>INVOICE NO</th><th>DATE</th><th>CUSTOMER</th><th>SALE</th><th>TAXABLE</th><th>GST</th><th>TOTAL</th><th /></tr></thead><tbody>{filtered.map((invoice) => <tr key={invoice._id}><td><strong>{invoice.invoiceNumber}</strong></td><td>{dateLabel(invoice.invoiceDate)}</td><td>{invoice.customer?.name}{invoice.customer?.gstin && <small>{invoice.customer.gstin}</small>}</td><td>{invoice.saleNumber || 'Direct bill'}</td><td>{money(invoice.totals?.taxableValue)}</td><td>{money(invoice.totals?.tax)}</td><td className="strong-cell">{money(invoice.totals?.grandTotal)}</td><td><div className="invoice-row-actions"><button className="button secondary" type="button" onClick={() => onOpen(invoice)}><Printer size={14} /> View / print</button><button className="report-delete-button" type="button" aria-label={`Delete invoice ${invoice.invoiceNumber}`} onClick={() => onDelete(invoice)}><Trash2 size={14} /></button></div></td></tr>)}</tbody></table></div>
+        : <div className="empty-state"><div className="empty-icon"><FileText size={21} /></div><strong>{query ? 'No matching invoices' : 'No invoices yet'}</strong><p>{query ? 'Try a different search.' : 'Click "New bill", pick a customer and products, and the bill shows here.'}</p></div>}
     </section>
   </>;
 }

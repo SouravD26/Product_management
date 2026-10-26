@@ -492,32 +492,50 @@ app.get('/api/invoices/:id', asyncRoute(async (req, res) => {
 
 app.post('/api/invoices', asyncRoute(async (req, res) => {
   const { saleId, customer = {}, invoiceDate } = req.body;
-  if (!mongoose.isValidObjectId(saleId)) return res.status(400).json({ message: 'Choose a valid sale.' });
   if (!String(customer.name || '').trim()) return res.status(400).json({ message: 'Enter the customer name.' });
   if (customer.gstin && !/^[0-9]{2}[A-Z0-9]{13}$/i.test(String(customer.gstin).trim())) return res.status(400).json({ message: 'Customer GSTIN must be 15 characters.' });
-  const existing = await Invoice.findOne({ sale: saleId }).lean();
-  if (existing) return res.json(existing);
-  const sale = await Sale.findById(saleId).lean();
-  if (!sale) return res.status(404).json({ message: 'Sale not found.' });
-  // Older sales have no MRP saved; fall back to the product's current MRP.
-  const saleProducts = new Map((await Product.find({ _id: { $in: sale.items.map((item) => item.product) } }).select('mrp').lean()).map((product) => [String(product._id), product.mrp]));
+  // A bill comes either from a recorded sale or straight from products picked on the Invoices page.
+  let sale = null;
+  let lines;
+  if (saleId) {
+    if (!mongoose.isValidObjectId(saleId)) return res.status(400).json({ message: 'Choose a valid sale.' });
+    const existing = await Invoice.findOne({ sale: saleId }).lean();
+    if (existing) return res.json(existing);
+    sale = await Sale.findById(saleId).lean();
+    if (!sale) return res.status(404).json({ message: 'Sale not found.' });
+    // Older sales have no MRP saved; fall back to the product's current MRP.
+    const saleProducts = new Map((await Product.find({ _id: { $in: sale.items.map((item) => item.product) } }).select('mrp').lean()).map((product) => [String(product._id), product.mrp]));
+    lines = sale.items.map((item) => ({ ...item, quantity: item.quantity - item.returnedQuantity, price: item.sellingPrice, mrp: item.mrp || saleProducts.get(String(item.product)) }));
+  } else {
+    if (!Array.isArray(req.body.items) || !req.body.items.length) return res.status(400).json({ message: 'Add at least one product to the bill.' });
+    lines = [];
+    for (const requested of req.body.items) {
+      const product = mongoose.isValidObjectId(requested.productId) ? await Product.findById(requested.productId).lean() : null;
+      if (!product) return res.status(404).json({ message: 'Choose a valid product for every line.' });
+      const quantity = Number(requested.quantity);
+      const price = Number(requested.price ?? product.sellingPrice);
+      if (!Number.isInteger(quantity) || quantity < 1) return res.status(400).json({ message: 'Quantities must be whole numbers greater than zero.' });
+      if (!(price >= 0)) return res.status(400).json({ message: 'Enter a valid price.' });
+      lines.push({ name: product.name, sku: product.sku, hsn: product.hsn, packSize: product.packSize, gstRate: product.gstRate, quantity, price, mrp: product.mrp });
+    }
+  }
   const seller = await getSettings();
   const date = invoiceDate ? new Date(invoiceDate) : new Date();
   if (Number.isNaN(date.getTime())) return res.status(400).json({ message: 'Enter a valid invoice date.' });
   const interState = Boolean(seller.state && customer.state && seller.state !== customer.state);
 
   // Selling prices are GST-inclusive, so the taxable value is backed out of each line total.
-  const items = sale.items.map((item) => {
-    const quantity = item.quantity - item.returnedQuantity;
+  const items = lines.map((item) => {
+    const { quantity } = item;
     if (quantity <= 0) return null;
-    const total = round(item.sellingPrice * quantity);
+    const total = round(item.price * quantity);
     const gstRate = Number(item.gstRate || 0);
     const taxableValue = round(total / (1 + gstRate / 100));
     const tax = round(total - taxableValue);
     const half = round(tax / 2);
     return {
       name: item.name, sku: item.sku, hsn: item.hsn, packSize: item.packSize, quantity, gstRate, total,
-      price: item.sellingPrice, mrp: Number(item.mrp || saleProducts.get(String(item.product)) || item.sellingPrice),
+      price: item.price, mrp: Number(item.mrp || item.price),
       rate: round(taxableValue / quantity), taxableValue,
       cgst: interState ? 0 : half, sgst: interState ? 0 : round(tax - half), igst: interState ? tax : 0,
     };
@@ -535,7 +553,7 @@ app.post('/api/invoices', asyncRoute(async (req, res) => {
   const counter = await Counter.findOneAndUpdate({ _id: `invoice-${fy}` }, { $inc: { seq: 1 } }, { upsert: true, new: true });
   const invoice = await Invoice.create({
     invoiceNumber: `${seller.invoicePrefix || 'AE'}/${fy}/${String(counter.seq).padStart(4, '0')}`,
-    sale: sale._id, saleNumber: sale.saleNumber, invoiceDate: date, interState,
+    sale: sale?._id || null, saleNumber: sale?.saleNumber || '', invoiceDate: date, interState,
     seller: Object.fromEntries(settingsFields.filter((key) => key !== 'invoicePrefix').map((key) => [key, seller[key] || ''])),
     customer: { name: customer.name, address: customer.address, gstin: customer.gstin, state: customer.state, phone: customer.phone },
     items, totals,

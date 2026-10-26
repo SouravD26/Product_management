@@ -64,3 +64,5 @@
 .invoice-lines th, .invoice-lines td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: right; }
 .invoice-lines th:first-child, .invoice-lines td:first-child { text-align: left; }
 .invoice-lines small { display: block; color: #6b7280; }
+.invoice-lines input, .invoice-lines select { width: 100%; min-width: 64px; }
+.invoice-lines > .button { margin-top: 8px; }
