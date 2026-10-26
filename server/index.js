@@ -9,6 +9,7 @@ import Sale from './models/Sale.js';
 import Settings from './models/Settings.js';
 import Invoice from './models/Invoice.js';
 import Counter from './models/Counter.js';
+import Customer from './models/Customer.js';
 
 const app = express();
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
@@ -231,7 +232,8 @@ app.post('/api/sales', asyncRoute(async (req, res) => {
       returnShippingCost: product.returnShippingCost,
     });
   }
-  const sale = await Sale.create({ platform, saleDate, saleNumber: `SL-${Date.now().toString().slice(-8)}`, items });
+  const customer = mongoose.isValidObjectId(req.body.customer) ? req.body.customer : null;
+  const sale = await Sale.create({ platform, saleDate, customer, saleNumber: `SL-${Date.now().toString().slice(-8)}`, items });
   res.status(201).json(sale);
 }));
 
@@ -359,6 +361,7 @@ app.patch('/api/sales/:saleId', asyncRoute(async (req, res) => {
   }
   sale.platform = req.body.platform;
   sale.saleDate = saleDate;
+  sale.customer = mongoose.isValidObjectId(req.body.customer) ? req.body.customer : null;
   await sale.save();
   res.json(sale);
 }));
@@ -459,6 +462,19 @@ app.put('/api/settings', asyncRoute(async (req, res) => {
   const update = Object.fromEntries(settingsFields.filter((key) => req.body[key] !== undefined).map((key) => [key, req.body[key]]));
   const settings = await Settings.findOneAndUpdate({ key: 'business' }, { $set: update }, { upsert: true, new: true, runValidators: true }).lean();
   res.json(settings);
+}));
+
+app.get('/api/customers', asyncRoute(async (_req, res) => {
+  // Start an empty customer list with one sample buyer so billing can be tried straight away.
+  if (!(await Customer.estimatedDocumentCount())) await Customer.create({ name: 'Sample Customer', gstin: '19CVEPD2252E1ZY', state: 'West Bengal' });
+  res.json(await Customer.find().sort({ name: 1 }).lean());
+}));
+
+app.post('/api/customers', asyncRoute(async (req, res) => {
+  const { name, phone = '', gstin = '', address = '', state = '' } = req.body;
+  if (!String(name || '').trim()) return res.status(400).json({ message: 'Enter the customer name.' });
+  if (gstin && !/^[0-9]{2}[A-Z0-9]{13}$/i.test(String(gstin).trim())) return res.status(400).json({ message: 'Customer GSTIN must be 15 characters.' });
+  res.status(201).json(await Customer.create({ name, phone, gstin, address, state }));
 }));
 
 app.get('/api/invoices', asyncRoute(async (_req, res) => {

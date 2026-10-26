@@ -24,6 +24,8 @@ const saleSchema = new mongoose.Schema({
   saleNumber: { type: String, unique: true },
   platform: { type: String, enum: ['Flipkart', 'Amazon', 'Meesho', 'Other'], default: 'Other' },
   saleDate: { type: Date },
+  // Only sales to a direct customer get a GST bill; marketplace orders leave this empty.
+  customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', default: null },
   items: { type: [saleItemSchema], required: true },
 }, { timestamps: true });
 

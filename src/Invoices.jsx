@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, FileText, LoaderCircle, Printer, Search, Settings2, Trash2, X } from 'lucide-react';
+import { ArrowRight, FileText, LoaderCircle, Plus, Printer, Search, Settings2, Trash2, X } from 'lucide-react';
 import logoUrl from './assets/logobr.png';
 import { dateLabel, money } from './shared.js';
 import './invoice.css';
@@ -65,8 +65,9 @@ export function SettingsForm({ settings, busy, error, onSave, close }) {
   </ModalShell>;
 }
 
-export function InvoiceForm({ sale, products = [], settings, busy, error, onCreate, close }) {
-  const [customer, setCustomer] = useState({ name: '', phone: '', gstin: '', address: '', state: settings?.state || '' });
+export function InvoiceForm({ sale, products = [], customers = [], settings, busy, error, onCreate, close }) {
+  const saved = customers.find((c) => c._id === String(sale.customer));
+  const [customer, setCustomer] = useState({ name: saved?.name || '', phone: saved?.phone || '', gstin: saved?.gstin || '', address: saved?.address || '', state: saved?.state || settings?.state || '' });
   const [invoiceDate, setInvoiceDate] = useState(localDate);
   const set = (key, value) => setCustomer((current) => ({ ...current, [key]: value }));
   const lines = sale.items.filter((item) => item.quantity > item.returnedQuantity);
@@ -95,21 +96,39 @@ export function InvoiceForm({ sale, products = [], settings, busy, error, onCrea
   </ModalShell>;
 }
 
-export function Invoices({ invoices, sales = [], loading, onOpen, onDelete, onCreate, openSettings }) {
+export function CustomerForm({ busy, error, onSave, close }) {
+  const [form, setForm] = useState({ name: '', phone: '', gstin: '', address: '', state: '' });
+  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  return <ModalShell eyebrow="GST BILLING" title="Add customer" description="Pick this customer on a sale to make it ready for a GST bill." error={error} close={close}>
+    <form onSubmit={(e) => { e.preventDefault(); onSave({ ...form, gstin: form.gstin.trim().toUpperCase() }); }}>
+      <div className="form-grid">
+        <label className="field"><span>Customer name <b>*</b></span><input required value={form.name} onChange={(e) => set('name', e.target.value)} /></label>
+        <label className="field"><span>Phone</span><input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></label>
+        <label className="field"><span>GSTIN</span><input value={form.gstin} maxLength={15} onChange={(e) => { const gstin = e.target.value.toUpperCase(); setForm((current) => ({ ...current, gstin, state: stateFromGstin(gstin) || current.state })); }} /></label>
+        <label className="field"><span>State <b>*</b></span><StateSelect required value={form.state} onChange={(value) => set('state', value)} /></label>
+        <label className="field full-field"><span>Billing address</span><textarea rows={2} value={form.address} onChange={(e) => set('address', e.target.value)} /></label>
+      </div>
+      <Footer busy={busy} close={close} submit="Save customer" />
+    </form>
+  </ModalShell>;
+}
+
+export function Invoices({ invoices, sales = [], customers = [], loading, onOpen, onDelete, onCreate, openSettings, openCustomer }) {
   const [query, setQuery] = useState('');
   const invoiced = new Set(invoices.map((invoice) => String(invoice.sale)));
-  const pending = sales.filter((sale) => !invoiced.has(String(sale._id)) && sale.items.some((item) => item.quantity > item.returnedQuantity));
+  const customerName = (id) => customers.find((c) => c._id === String(id))?.name || '—';
+  const pending = sales.filter((sale) => sale.customer && !invoiced.has(String(sale._id)) && sale.items.some((item) => item.quantity > item.returnedQuantity));
   const filtered = invoices.filter((invoice) => `${invoice.invoiceNumber} ${invoice.customer?.name} ${invoice.saleNumber}`.toLowerCase().includes(query.toLowerCase()));
   return <>
-    <div className="page-heading"><div><div className="eyebrow">GST BILLING</div><h1>Invoices</h1><p>Create a GST invoice from any sale in Sales &amp; returns, then print it.</p></div><div className="heading-actions"><button className="button secondary" onClick={openSettings}><Settings2 size={16} /> Business settings</button></div></div>
-    {pending.length > 0 && <section className="panel table-panel"><div className="table-toolbar"><div><h2>Ready to bill <span className="count-badge">{pending.length}</span></h2><p>Sales without a GST invoice yet.</p></div></div><div className="table-scroll"><table><thead><tr><th>SALE</th><th>DATE</th><th>ITEMS</th><th>MRP</th><th>NET SALE</th><th /></tr></thead><tbody>{pending.map((sale) => {
+    <div className="page-heading"><div><div className="eyebrow">GST BILLING</div><h1>Invoices</h1><p>Create a GST invoice from any sale in Sales &amp; returns, then print it.</p></div><div className="heading-actions"><button className="button secondary" onClick={openCustomer}><Plus size={16} /> Add customer</button><button className="button secondary" onClick={openSettings}><Settings2 size={16} /> Business settings</button></div></div>
+    {pending.length > 0 && <section className="panel table-panel"><div className="table-toolbar"><div><h2>Ready to bill <span className="count-badge">{pending.length}</span></h2><p>Customer sales without a GST invoice yet. Marketplace orders are not listed.</p></div></div><div className="table-scroll"><table><thead><tr><th>SALE</th><th>DATE</th><th>CUSTOMER</th><th>ITEMS</th><th>MRP</th><th>NET SALE</th><th /></tr></thead><tbody>{pending.map((sale) => {
       const lines = sale.items.filter((item) => item.quantity > item.returnedQuantity);
       const qty = (item) => item.quantity - item.returnedQuantity;
-      return <tr key={sale._id}><td><strong>{sale.saleNumber}</strong></td><td>{dateLabel(sale.saleDate || sale.createdAt)}</td><td>{lines.map((item) => `${item.name} × ${qty(item)}`).join(', ')}</td><td>{money(lines.reduce((sum, item) => sum + Number(item.mrp || item.sellingPrice) * qty(item), 0))}</td><td className="strong-cell">{money(lines.reduce((sum, item) => sum + item.sellingPrice * qty(item), 0))}</td><td><button className="button primary" type="button" onClick={() => onCreate(sale)}><FileText size={14} /> Create bill</button></td></tr>;
+      return <tr key={sale._id}><td><strong>{sale.saleNumber}</strong></td><td>{dateLabel(sale.saleDate || sale.createdAt)}</td><td>{customerName(sale.customer)}</td><td>{lines.map((item) => `${item.name} × ${qty(item)}`).join(', ')}</td><td>{money(lines.reduce((sum, item) => sum + Number(item.mrp || item.sellingPrice) * qty(item), 0))}</td><td className="strong-cell">{money(lines.reduce((sum, item) => sum + item.sellingPrice * qty(item), 0))}</td><td><button className="button primary" type="button" onClick={() => onCreate(sale)}><FileText size={14} /> Create bill</button></td></tr>;
     })}</tbody></table></div></section>}
     <section className="panel table-panel"><div className="table-toolbar"><div><h2>All invoices <span className="count-badge">{invoices.length}</span></h2><p>Each invoice keeps the details from the day it was issued.</p></div><label className="search-box"><Search size={15} /><input placeholder="Search invoices..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div>
       {loading ? <div className="loading-state"><LoaderCircle size={19} className="spinning" /> Loading invoices…</div> : filtered.length ? <div className="table-scroll"><table><thead><tr><th>INVOICE NO</th><th>DATE</th><th>CUSTOMER</th><th>SALE</th><th>TAXABLE</th><th>GST</th><th>TOTAL</th><th /></tr></thead><tbody>{filtered.map((invoice) => <tr key={invoice._id}><td><strong>{invoice.invoiceNumber}</strong></td><td>{dateLabel(invoice.invoiceDate)}</td><td>{invoice.customer?.name}{invoice.customer?.gstin && <small>{invoice.customer.gstin}</small>}</td><td>{invoice.saleNumber}</td><td>{money(invoice.totals?.taxableValue)}</td><td>{money(invoice.totals?.tax)}</td><td className="strong-cell">{money(invoice.totals?.grandTotal)}</td><td><div className="invoice-row-actions"><button className="button secondary" type="button" onClick={() => onOpen(invoice)}><Printer size={14} /> View / print</button><button className="report-delete-button" type="button" aria-label={`Delete invoice ${invoice.invoiceNumber}`} onClick={() => onDelete(invoice)}><Trash2 size={14} /></button></div></td></tr>)}</tbody></table></div>
-        : <div className="empty-state"><div className="empty-icon"><FileText size={21} /></div><strong>{query ? 'No matching invoices' : 'No invoices yet'}</strong><p>{query ? 'Try a different search.' : 'Open Sales & returns and choose "GST bill" on a sale.'}</p></div>}
+        : <div className="empty-state"><div className="empty-icon"><FileText size={21} /></div><strong>{query ? 'No matching invoices' : 'No invoices yet'}</strong><p>{query ? 'Try a different search.' : 'Pick a customer on a sale in Sales & returns, then create its bill above.'}</p></div>}
     </section>
   </>;
 }
