@@ -78,6 +78,22 @@ const optimizeProductImage = (file) => new Promise((resolve, reject) => {
   };
   reader.readAsDataURL(file);
 });
+const CACHE_KEY = 'meridian-workspace-cache';
+let cacheMemo;
+const readCache = () => {
+  if (cacheMemo) return cacheMemo;
+  try { cacheMemo = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch { cacheMemo = {}; }
+  return cacheMemo;
+};
+// Keeps the last loaded data so a reload can show it instantly while fresh data loads.
+const writeCache = (patch) => {
+  cacheMemo = { ...readCache(), ...patch };
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cacheMemo)); }
+  catch {
+    // Product photos can exceed the storage quota; fall back to caching without them.
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cacheMemo, products: (cacheMemo.products || []).map(({ image, ...rest }) => rest) })); } catch { /* storage unavailable */ }
+  }
+};
 const api = async (path, options = {}) => {
   const response = await fetch(`/api${path}`, { cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
   const data = await response.json().catch(() => ({}));
@@ -88,14 +104,14 @@ const api = async (path, options = {}) => {
 function App() {
   const [page, setPage] = useState('Overview');
   const [currentHour, setCurrentHour] = useState(() => new Date().getHours());
-  const [products, setProducts] = useState([]);
-  const [sales, setSales] = useState([]);
-  const [report, setReport] = useState(null);
+  const [products, setProducts] = useState(() => readCache().products || []);
+  const [sales, setSales] = useState(() => readCache().sales || []);
+  const [report, setReport] = useState(() => { const r = readCache().report; return r && r.month === monthNow() ? r : null; });
   const [month, setMonth] = useState(monthNow());
   const [modal, setModal] = useState(null);
   const [previewProduct, setPreviewProduct] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !readCache().products);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -103,12 +119,19 @@ function App() {
   const [query, setQuery] = useState('');
 
   const refresh = useCallback(async (nextMonth = month) => {
-    setLoading(true); setError('');
-    try {
-      const [p, s, r, health] = await Promise.all([api('/products'), api('/sales'), api(`/reports/monthly?month=${nextMonth}`), api('/health')]);
-      setProducts(p); setSales(s); setReport(r); setChatMode(health.assistant || 'local');
-    } catch (err) { setError(`${err.message} Start MongoDB and the API server to connect your workspace.`); }
-    finally { setLoading(false); }
+    setError('');
+    const fail = (err) => { setError(`${err.message} Start MongoDB and the API server to connect your workspace.`); };
+    // Each request updates the screen as soon as it arrives instead of waiting for all of them.
+    const loads = [
+      api('/products').then((p) => { setProducts(p); setLoading(false); writeCache({ products: p }); }),
+      api('/sales').then((s) => { setSales(s); writeCache({ sales: s }); }),
+      api(`/reports/monthly?month=${nextMonth}`).then((r) => { setReport(r); writeCache({ report: r }); }),
+      api('/health').then((health) => setChatMode(health.assistant || 'local')).catch(() => {}),
+    ];
+    const results = await Promise.allSettled(loads);
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed) fail(failed.reason);
+    setLoading(false);
   }, [month]);
 
   useEffect(() => { refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps

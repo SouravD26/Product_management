@@ -26,4 +26,7 @@ const saleSchema = new mongoose.Schema({
   items: { type: [saleItemSchema], required: true },
 }, { timestamps: true });
 
+saleSchema.index({ createdAt: -1 });
+saleSchema.index({ saleDate: -1 });
+
 export default mongoose.model('Sale', saleSchema);

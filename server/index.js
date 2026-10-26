@@ -18,11 +18,13 @@ const connectDatabase = async () => {
   const mongoUri = process.env.MONGODB_URI || (process.env.VERCEL ? '' : 'mongodb://127.0.0.1:27017/meridian');
   if (!mongoUri) throw new Error('MONGODB_URI is not configured. Add a MongoDB Atlas connection string in the Vercel project environment variables.');
   if (!mongoConnectionPromise) {
-    mongoConnectionPromise = mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000 })
+    mongoConnectionPromise = mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000, maxPoolSize: 10 })
       .catch((error) => { mongoConnectionPromise = undefined; throw error; });
   }
   await mongoConnectionPromise;
 };
+// Start connecting at startup so the first request doesn't pay for the handshake.
+connectDatabase().catch(() => {});
 
 const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 const round = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
