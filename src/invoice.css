@@ -59,3 +59,8 @@
 .inv-strong{font-weight:700}
 .inv-table td small{text-align:right}
 .inv-savings{margin:6px 0 0!important;color:#1d7a46;font-weight:600}
+.invoice-lines { overflow-x: auto; }
+.invoice-lines table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.invoice-lines th, .invoice-lines td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: right; }
+.invoice-lines th:first-child, .invoice-lines td:first-child { text-align: left; }
+.invoice-lines small { display: block; color: #6b7280; }

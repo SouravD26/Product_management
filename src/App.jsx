@@ -239,11 +239,11 @@ function App() {
         {page === 'Sales & returns' && <Sales sales={sales} products={products} openSale={() => setModal({ type: 'sale' })} openEdit={(sale) => setModal({ type: 'editSale', sale })} deleteSale={deleteSale} openReturn={(sale, item) => setModal({ type: 'return', sale, item })} openInvoice={openSaleInvoice} invoicedSales={new Set(invoices.map((invoice) => String(invoice.sale)))} loading={loading} />}
         {page === 'Sales calendar' && <SalesCalendar sales={sales} month={month} changeMonth={chooseMonth} loading={loading} />}
         {page === 'Profit reports' && <Reports report={report} month={month} changeMonth={chooseMonth} onExport={exportReport} onDeleteItem={deleteReportItem} loading={loading} />}
-        {page === 'Invoices' && <Invoices invoices={invoices} loading={loading} onOpen={openInvoice} onDelete={deleteInvoice} openSettings={openSettings} />}
+        {page === 'Invoices' && <Invoices invoices={invoices} sales={sales} loading={loading} onCreate={openSaleInvoice} onOpen={openInvoice} onDelete={deleteInvoice} openSettings={openSettings} />}
       </div>
     </main>
     {modal?.type === 'settings' && <SettingsForm settings={settings || {}} busy={busy} error={error} onSave={saveSettings} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
-    {modal?.type === 'invoice' && <InvoiceForm sale={modal.sale} settings={settings} busy={busy} error={error} onCreate={createInvoice} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
+    {modal?.type === 'invoice' && <InvoiceForm sale={modal.sale} products={products} settings={settings} busy={busy} error={error} onCreate={createInvoice} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
     {viewInvoice && <InvoiceView invoice={viewInvoice} close={() => setViewInvoice(null)} />}
     {modal && !['settings', 'invoice'].includes(modal.type) && <Modal modal={modal} products={products} busy={busy} error={error} close={() => { if (!busy) { setModal(null); setError(''); } }} onProduct={(data) => run(() => api(data._id ? `/products/${data._id}` : '/products', { method: data._id ? 'PUT' : 'POST', body: JSON.stringify(data) }), data._id ? 'Product updated.' : modal.type === 'variant' ? 'Variant added with shared stock.' : 'Product added to inventory.')} onSale={(data) => run(() => api('/sales', { method: 'POST', body: JSON.stringify(data) }), 'Sale recorded and stock updated.')} onEditSale={(data) => saveSaleDetails(data.saleId, data)} onReturn={(data) => run(() => api(`/sales/${data.saleId}/returns`, { method: 'POST', body: JSON.stringify(data) }), 'Return processed and stock restored.')} />}
     {previewProduct && <ProductImagePreview product={previewProduct} onClose={() => setPreviewProduct(null)} />}
