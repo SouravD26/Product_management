@@ -1,0 +1,24 @@
+
+> meridian-product-management@1.0.0 dev
+> concurrently "npm:dev:server" "npm:dev:client"
+
+[dev:server] 
+[dev:server] > meridian-product-management@1.0.0 dev:server
+[dev:server] > nodemon server/index.js
+[dev:server] 
+[dev:client] 
+[dev:client] > meridian-product-management@1.0.0 dev:client
+[dev:client] > vite --host 0.0.0.0
+[dev:client] 
+[dev:server] [33m[nodemon] 3.1.14[39m
+[dev:server] [33m[nodemon] to restart at any time, enter `rs`[39m
+[dev:server] [33m[nodemon] watching path(s): *.*[39m
+[dev:server] [33m[nodemon] watching extensions: js,mjs,cjs,json[39m
+[dev:server] [32m[nodemon] starting `node server/index.js`[39m
+[dev:client] 
+[dev:client]   [32m[1mVITE[22m v6.4.5[39m  [2mready in [0m[1m2630[22m[2m[0m ms[22m
+[dev:client] 
+[dev:client]   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[dev:client]   [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.4.212:[1m5173[22m/[39m
+[dev:client]   [32m➜[39m  [1mNetwork[22m: [36mhttp://172.22.32.1:[1m5173[22m/[39m
+[dev:server] Meridian API listening on http://localhost:5000

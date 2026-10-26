@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import logoUrl from './assets/logobr.png';
 import DashboardChatbot from './DashboardChatbot.jsx';
+import { InvoiceForm, InvoiceView, Invoices, SettingsForm } from './Invoices.jsx';
+import { api, dateLabel, money, optimizeProductImage } from './shared.js';
 import './calendar.css';
 import {
   Activity, ArrowDownRight, ArrowLeft, ArrowRight, ArrowUpRight, Boxes, CalendarDays,
-  Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Download, Ellipsis,
+  Check, ChevronDown, FileText, ChevronLeft, ChevronRight, CircleHelp, Download, Ellipsis,
   LayoutDashboard, LoaderCircle, Package, Pencil, Plus, Search, Settings2, ShoppingBag,
   ShoppingCart, Sparkles, TrendingUp, Trash2, Truck, Undo2, X,
 } from 'lucide-react';
 
-const money = (n = 0) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(Number(n) || 0);
 const stockGroupKey = (product) => String(product.stockGroupId || product._id);
 const uniqueStockProducts = (products) => {
   const groups = new Map();
@@ -52,32 +53,6 @@ const monthNow = () => new Date().toISOString().slice(0, 7);
 const localDateInput = () => { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10); };
 const dateInputValue = (value) => value ? new Date(value).toISOString().slice(0, 10) : localDateInput();
 const monthLabel = (value) => new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}-01T00:00:00Z`));
-const dateLabel = (value) => new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
-const optimizeProductImage = (file) => new Promise((resolve, reject) => {
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return reject(new Error('Choose a JPG, PNG, or WebP image.'));
-  if (file.size > 5 * 1024 * 1024) return reject(new Error('Choose an image smaller than 5 MB.'));
-  const reader = new FileReader();
-  reader.onerror = () => reject(new Error('Could not read this image.'));
-  reader.onload = () => {
-    const image = new Image();
-    image.onerror = () => reject(new Error('Could not open this image.'));
-    image.onload = () => {
-      const scale = Math.min(1, 720 / Math.max(image.naturalWidth, image.naturalHeight));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      const context = canvas.getContext('2d');
-      if (!context) return reject(new Error('Image processing is unavailable in this browser.'));
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const webp = canvas.toDataURL('image/webp', 0.82);
-      resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.82));
-    };
-    image.src = reader.result;
-  };
-  reader.readAsDataURL(file);
-});
 const CACHE_KEY = 'meridian-workspace-cache';
 let cacheMemo;
 const readCache = () => {
@@ -94,12 +69,6 @@ const writeCache = (patch) => {
     try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ...cacheMemo, products: (cacheMemo.products || []).map(({ image, ...rest }) => rest) })); } catch { /* storage unavailable */ }
   }
 };
-const api = async (path, options = {}) => {
-  const response = await fetch(`/api${path}`, { cache: 'no-store', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || 'Could not complete the request.');
-  return data;
-};
 
 function App() {
   const [page, setPage] = useState('Overview');
@@ -108,6 +77,9 @@ function App() {
   const [sales, setSales] = useState(() => readCache().sales || []);
   const [report, setReport] = useState(() => { const r = readCache().report; return r && r.month === monthNow() ? r : null; });
   const [month, setMonth] = useState(monthNow());
+  const [invoices, setInvoices] = useState(() => readCache().invoices || []);
+  const [settings, setSettings] = useState(() => readCache().settings || null);
+  const [viewInvoice, setViewInvoice] = useState(null);
   const [modal, setModal] = useState(null);
   const [previewProduct, setPreviewProduct] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
@@ -126,6 +98,8 @@ function App() {
       api('/products').then((p) => { setProducts(p); setLoading(false); writeCache({ products: p }); }),
       api('/sales').then((s) => { setSales(s); writeCache({ sales: s }); }),
       api(`/reports/monthly?month=${nextMonth}`).then((r) => { setReport(r); writeCache({ report: r }); }),
+      api('/invoices').then((list) => { setInvoices(list); writeCache({ invoices: list }); }),
+      api('/settings').then((data) => { setSettings(data); writeCache({ settings: data }); }),
       api('/health').then((health) => setChatMode(health.assistant || 'local')).catch(() => {}),
     ];
     const results = await Promise.allSettled(loads);
@@ -204,6 +178,27 @@ function App() {
     while (products.some((item) => item.sku === variantSku)) variantSku = `${stockOwner.sku}-V${++variantNumber}`;
     setModal({ type: 'variant', product: stockOwner, variantSku });
   };
+  const createInvoice = (data) => run(async () => {
+    const invoice = await api('/invoices', { method: 'POST', body: JSON.stringify(data) });
+    setViewInvoice(invoice);
+  }, 'GST invoice ready.');
+  const saveSettings = (data) => run(async () => setSettings(await api('/settings', { method: 'PUT', body: JSON.stringify(data) })), 'Business settings saved.');
+  const openInvoice = async (invoice) => {
+    try { setViewInvoice(await api(`/invoices/${invoice._id}`)); } catch (err) { setError(err.message); }
+  };
+  const openSettings = async () => {
+    try { const data = settings || await api('/settings'); setSettings(data); setModal({ type: 'settings' }); } catch (err) { setError(err.message); }
+  };
+  const openSaleInvoice = (sale) => {
+    const existing = invoices.find((invoice) => String(invoice.sale) === String(sale._id));
+    if (existing) openInvoice(existing); else setModal({ type: 'invoice', sale });
+  };
+  const deleteInvoice = (invoice) => setConfirmDialog({
+    title: 'Delete this invoice?',
+    message: `Invoice ${invoice.invoiceNumber} will be removed. Its number will not be reused. This cannot be undone.`,
+    confirmLabel: 'Delete invoice',
+    action: () => run(() => api(`/invoices/${invoice._id}`, { method: 'DELETE' }), 'Invoice deleted.'),
+  });
   const deleteProduct = (product) => setConfirmDialog({
     title: 'Delete this product variant?',
     message: `Delete ${product.name} (${product.sku}) from inventory? Its other variants and their shared stock will remain. Products with sales history cannot be deleted.`,
@@ -220,6 +215,7 @@ function App() {
     { label: 'Sales & returns', icon: ShoppingCart },
     { label: 'Sales calendar', icon: CalendarDays },
     { label: 'Profit reports', icon: TrendingUp },
+    { label: 'Invoices', icon: FileText },
   ];
 
   return <div className="app-shell">
@@ -240,12 +236,16 @@ function App() {
       <div className="page-content">
         {page === 'Overview' && <Overview greeting={currentHour < 5 ? 'Good night' : currentHour < 12 ? 'Good morning' : currentHour < 17 ? 'Good afternoon' : currentHour < 21 ? 'Good evening' : 'Good night'} report={report} totals={totals} products={products} sales={sales} stockValue={stockValue} totalUnits={totalUnits} lowStock={lowStock} zeroStock={zeroStock} month={month} changeMonth={chooseMonth} setPage={setPage} openSale={() => setModal({ type: 'sale' })} openProduct={() => setModal({ type: 'product' })} loading={loading} />}
         {page === 'Inventory' && <Inventory products={products} query={query} setQuery={setQuery} openProduct={(product) => setModal({ type: 'product', product })} openVariant={openVariant} onDelete={deleteProduct} onPreview={setPreviewProduct} openNew={() => setModal({ type: 'product' })} loading={loading} />}
-        {page === 'Sales & returns' && <Sales sales={sales} products={products} openSale={() => setModal({ type: 'sale' })} openEdit={(sale) => setModal({ type: 'editSale', sale })} deleteSale={deleteSale} openReturn={(sale, item) => setModal({ type: 'return', sale, item })} loading={loading} />}
+        {page === 'Sales & returns' && <Sales sales={sales} products={products} openSale={() => setModal({ type: 'sale' })} openEdit={(sale) => setModal({ type: 'editSale', sale })} deleteSale={deleteSale} openReturn={(sale, item) => setModal({ type: 'return', sale, item })} openInvoice={openSaleInvoice} invoicedSales={new Set(invoices.map((invoice) => String(invoice.sale)))} loading={loading} />}
         {page === 'Sales calendar' && <SalesCalendar sales={sales} month={month} changeMonth={chooseMonth} loading={loading} />}
         {page === 'Profit reports' && <Reports report={report} month={month} changeMonth={chooseMonth} onExport={exportReport} onDeleteItem={deleteReportItem} loading={loading} />}
+        {page === 'Invoices' && <Invoices invoices={invoices} loading={loading} onOpen={openInvoice} onDelete={deleteInvoice} openSettings={openSettings} />}
       </div>
     </main>
-    {modal && <Modal modal={modal} products={products} busy={busy} error={error} close={() => { if (!busy) { setModal(null); setError(''); } }} onProduct={(data) => run(() => api(data._id ? `/products/${data._id}` : '/products', { method: data._id ? 'PUT' : 'POST', body: JSON.stringify(data) }), data._id ? 'Product updated.' : modal.type === 'variant' ? 'Variant added with shared stock.' : 'Product added to inventory.')} onSale={(data) => run(() => api('/sales', { method: 'POST', body: JSON.stringify(data) }), 'Sale recorded and stock updated.')} onEditSale={(data) => saveSaleDetails(data.saleId, data)} onReturn={(data) => run(() => api(`/sales/${data.saleId}/returns`, { method: 'POST', body: JSON.stringify(data) }), 'Return processed and stock restored.')} />}
+    {modal?.type === 'settings' && <SettingsForm settings={settings || {}} busy={busy} error={error} onSave={saveSettings} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
+    {modal?.type === 'invoice' && <InvoiceForm sale={modal.sale} settings={settings} busy={busy} error={error} onCreate={createInvoice} close={() => { if (!busy) { setModal(null); setError(''); } }} />}
+    {viewInvoice && <InvoiceView invoice={viewInvoice} close={() => setViewInvoice(null)} />}
+    {modal && !['settings', 'invoice'].includes(modal.type) && <Modal modal={modal} products={products} busy={busy} error={error} close={() => { if (!busy) { setModal(null); setError(''); } }} onProduct={(data) => run(() => api(data._id ? `/products/${data._id}` : '/products', { method: data._id ? 'PUT' : 'POST', body: JSON.stringify(data) }), data._id ? 'Product updated.' : modal.type === 'variant' ? 'Variant added with shared stock.' : 'Product added to inventory.')} onSale={(data) => run(() => api('/sales', { method: 'POST', body: JSON.stringify(data) }), 'Sale recorded and stock updated.')} onEditSale={(data) => saveSaleDetails(data.saleId, data)} onReturn={(data) => run(() => api(`/sales/${data.saleId}/returns`, { method: 'POST', body: JSON.stringify(data) }), 'Return processed and stock restored.')} />}
     {previewProduct && <ProductImagePreview product={previewProduct} onClose={() => setPreviewProduct(null)} />}
     {confirmDialog && <ConfirmationDialog dialog={confirmDialog} busy={busy} onCancel={() => { if (!busy) setConfirmDialog(null); }} onConfirm={confirmPendingAction} />}
     <DashboardChatbot products={products} sales={sales} report={report} month={month} chatMode={chatMode} />
@@ -347,10 +347,10 @@ function MobileProductCard({ product, isVariant = false, variantCount = 0, expan
     <div className="mobile-product-actions">{!isVariant && <button type="button" onClick={() => openVariant(product)}><Plus size={14} /> Add variant</button>}<button type="button" onClick={() => openProduct(product)}><Pencil size={13} /> Edit</button><button type="button" className="delete-product-button" onClick={() => onDelete(product)}><Trash2 size={13} /> Delete</button>{!isVariant && variantCount > 0 && (autoExpanded ? <span className="mobile-variant-match">Matching variants shown</span> : <button type="button" className="mobile-variant-toggle" onClick={onToggle}>{expanded ? 'Hide' : 'Show'} {variantCount} variant{variantCount === 1 ? '' : 's'} <ChevronDown size={13} /></button>)}</div>
   </article>;
 }
-function Sales({ sales, products, openSale, openEdit, deleteSale, openReturn, loading }) {
+function Sales({ sales, products, openSale, openEdit, deleteSale, openReturn, openInvoice, invoicedSales, loading }) {
   const [query, setQuery] = useState('');
   const filtered = sales.filter((sale) => `${sale.saleNumber} ${sale.platform || ""} ${sale.items.map((x) => x.name).join(' ')}`.toLowerCase().includes(query.toLowerCase()));
-  return <><PageHeading eyebrow="ORDERS" title="Sales & returns" description="Record orders, keep stock current, and process returns." actions={<button className="button primary" onClick={openSale}><Plus size={16} /> Record a sale</button>} /><div className="sales-metrics"><div><div className="metric-mini-icon blue"><ShoppingBag size={17} /></div><span>Total orders</span><strong>{sales.length}</strong></div><div><div className="metric-mini-icon green"><TrendingUp size={17} /></div><span>Individual units sold this month</span><strong>{sales.filter((s) => (s.saleDate || s.createdAt)?.slice(0, 7) === monthNow()).reduce((sum, s) => sum + s.items.reduce((a, i) => a + (i.quantity - i.returnedQuantity) * Number(i.packSize || 1), 0), 0)}</strong></div><div><div className="metric-mini-icon orange"><Undo2 size={17} /></div><span>Individual units returned</span><strong>{sales.reduce((sum, s) => sum + s.items.reduce((a, i) => a + i.returnedQuantity * Number(i.packSize || 1), 0), 0)}</strong></div></div><section className="panel table-panel"><div className="table-toolbar"><div><h2>All transactions <span className="count-badge">{sales.length}</span></h2><p>Sales are saved with the prices from the day of purchase.</p></div><label className="search-box"><Search size={15} /><input placeholder="Search transactions..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div>{loading ? <Loading /> : filtered.length ? <div className="transaction-list">{filtered.map((sale) => <article className="transaction-card" key={sale._id}><div className="transaction-icon"><ShoppingBag size={17} /></div><div className="transaction-main"><div><strong>{sale.saleNumber}</strong><span className="transaction-date">{dateLabel(sale.saleDate || sale.createdAt)}</span></div><span className="transaction-customer">{sale.platform || 'Marketplace not recorded'} · {sale.items.length} {sale.items.length === 1 ? 'product' : 'products'}</span><div className="transaction-items">{sale.items.map((item) => <span key={item.product} className="transaction-chip">{item.name} <b>× {item.quantity - item.returnedQuantity} pack(s) · {(item.quantity - item.returnedQuantity) * Number(item.packSize || 1)} units</b>{item.returnedQuantity > 0 && <i>({item.returnedQuantity} pack(s) returned)</i>}</span>)}</div></div><div className="transaction-total"><span>NET SALE</span><strong>{money(sale.items.reduce((sum, item) => sum + item.sellingPrice * (item.quantity - item.returnedQuantity), 0))}</strong></div><div className="transaction-controls"><button className="sale-edit-button" type="button" onClick={() => openEdit(sale)}><Pencil size={13} /> Edit</button><button className="sale-delete-button" type="button" onClick={() => deleteSale(sale)}><Trash2 size={13} /> Delete</button>{sale.items.some((item) => item.quantity > item.returnedQuantity && products.some((p) => p._id === item.product)) ? <button className="return-button" onClick={() => { const item = sale.items.find((line) => line.quantity > line.returnedQuantity && products.some((p) => p._id === line.product)); if (item) openReturn(sale, item); }}><Undo2 size={14} /> Return</button> : <span className="returned-tag">Fully returned</span>}</div></article>)}</div> : <Empty title={query ? 'No matching transactions' : 'No sales just yet'} copy={query ? 'Try a different search term.' : 'Once you record an order, you can process returns from here.'} action={query ? null : 'Record your first sale'} onClick={openSale} />}</section></>;
+  return <><PageHeading eyebrow="ORDERS" title="Sales & returns" description="Record orders, keep stock current, and process returns." actions={<button className="button primary" onClick={openSale}><Plus size={16} /> Record a sale</button>} /><div className="sales-metrics"><div><div className="metric-mini-icon blue"><ShoppingBag size={17} /></div><span>Total orders</span><strong>{sales.length}</strong></div><div><div className="metric-mini-icon green"><TrendingUp size={17} /></div><span>Individual units sold this month</span><strong>{sales.filter((s) => (s.saleDate || s.createdAt)?.slice(0, 7) === monthNow()).reduce((sum, s) => sum + s.items.reduce((a, i) => a + (i.quantity - i.returnedQuantity) * Number(i.packSize || 1), 0), 0)}</strong></div><div><div className="metric-mini-icon orange"><Undo2 size={17} /></div><span>Individual units returned</span><strong>{sales.reduce((sum, s) => sum + s.items.reduce((a, i) => a + i.returnedQuantity * Number(i.packSize || 1), 0), 0)}</strong></div></div><section className="panel table-panel"><div className="table-toolbar"><div><h2>All transactions <span className="count-badge">{sales.length}</span></h2><p>Sales are saved with the prices from the day of purchase.</p></div><label className="search-box"><Search size={15} /><input placeholder="Search transactions..." value={query} onChange={(e) => setQuery(e.target.value)} /></label></div>{loading ? <Loading /> : filtered.length ? <div className="transaction-list">{filtered.map((sale) => <article className="transaction-card" key={sale._id}><div className="transaction-icon"><ShoppingBag size={17} /></div><div className="transaction-main"><div><strong>{sale.saleNumber}</strong><span className="transaction-date">{dateLabel(sale.saleDate || sale.createdAt)}</span></div><span className="transaction-customer">{sale.platform || 'Marketplace not recorded'} · {sale.items.length} {sale.items.length === 1 ? 'product' : 'products'}</span><div className="transaction-items">{sale.items.map((item) => <span key={item.product} className="transaction-chip">{item.name} <b>× {item.quantity - item.returnedQuantity} pack(s) · {(item.quantity - item.returnedQuantity) * Number(item.packSize || 1)} units</b>{item.returnedQuantity > 0 && <i>({item.returnedQuantity} pack(s) returned)</i>}</span>)}</div></div><div className="transaction-total"><span>NET SALE</span><strong>{money(sale.items.reduce((sum, item) => sum + item.sellingPrice * (item.quantity - item.returnedQuantity), 0))}</strong></div><div className="transaction-controls"><button className="sale-edit-button" type="button" onClick={() => openEdit(sale)}><Pencil size={13} /> Edit</button><button className="sale-edit-button sale-invoice-button" type="button" onClick={() => openInvoice(sale)}><FileText size={13} /> {invoicedSales.has(String(sale._id)) ? 'View bill' : 'GST bill'}</button><button className="sale-delete-button" type="button" onClick={() => deleteSale(sale)}><Trash2 size={13} /> Delete</button>{sale.items.some((item) => item.quantity > item.returnedQuantity && products.some((p) => p._id === item.product)) ? <button className="return-button" onClick={() => { const item = sale.items.find((line) => line.quantity > line.returnedQuantity && products.some((p) => p._id === line.product)); if (item) openReturn(sale, item); }}><Undo2 size={14} /> Return</button> : <span className="returned-tag">Fully returned</span>}</div></article>)}</div> : <Empty title={query ? 'No matching transactions' : 'No sales just yet'} copy={query ? 'Try a different search term.' : 'Once you record an order, you can process returns from here.'} action={query ? null : 'Record your first sale'} onClick={openSale} />}</section></>;
 }
 
 function SalesCalendar({ sales, month, changeMonth, loading }) {

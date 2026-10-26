@@ -6,6 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Product from './models/Product.js';
 import Sale from './models/Sale.js';
+import Settings from './models/Settings.js';
+import Invoice from './models/Invoice.js';
+import Counter from './models/Counter.js';
 
 const app = express();
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
@@ -437,6 +440,95 @@ app.get('/api/reports/monthly', asyncRoute(async (req, res) => {
     daily[day].profit = round(daily[day].profit + row.profit);
   });
   res.json({ month: selected, totals, rows, daily: Object.values(daily).sort((a, b) => a.day - b.day) });
+}));
+
+const settingsFields = ['businessName', 'logo', 'gstin', 'address', 'state', 'phone', 'email', 'invoicePrefix', 'bankDetails', 'terms'];
+const getSettings = async () => (await Settings.findOne({ key: 'business' }).lean()) || new Settings().toObject();
+const financialYear = (date) => {
+  const year = date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+  return `${year}-${String((year + 1) % 100).padStart(2, '0')}`;
+};
+
+app.get('/api/settings', asyncRoute(async (_req, res) => {
+  res.json(await getSettings());
+}));
+
+app.put('/api/settings', asyncRoute(async (req, res) => {
+  if (!validProductImage(req.body.logo)) return res.status(400).json({ message: 'Logo must be a PNG, JPEG, or WebP image under 2 MB after resizing.' });
+  if (req.body.gstin && !/^[0-9]{2}[A-Z0-9]{13}$/i.test(String(req.body.gstin).trim())) return res.status(400).json({ message: 'GSTIN must be 15 characters, starting with the 2-digit state code.' });
+  const update = Object.fromEntries(settingsFields.filter((key) => req.body[key] !== undefined).map((key) => [key, req.body[key]]));
+  const settings = await Settings.findOneAndUpdate({ key: 'business' }, { $set: update }, { upsert: true, new: true, runValidators: true }).lean();
+  res.json(settings);
+}));
+
+app.get('/api/invoices', asyncRoute(async (_req, res) => {
+  // The list omits logos to stay light; open an invoice to get its full snapshot.
+  const invoices = await Invoice.find().select('-seller.logo').sort({ invoiceDate: -1, createdAt: -1 }).lean();
+  res.json(invoices);
+}));
+
+app.get('/api/invoices/:id', asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Invoice not found.' });
+  const invoice = await Invoice.findById(req.params.id).lean();
+  if (!invoice) return res.status(404).json({ message: 'Invoice not found.' });
+  res.json(invoice);
+}));
+
+app.post('/api/invoices', asyncRoute(async (req, res) => {
+  const { saleId, customer = {}, invoiceDate } = req.body;
+  if (!mongoose.isValidObjectId(saleId)) return res.status(400).json({ message: 'Choose a valid sale.' });
+  if (!String(customer.name || '').trim()) return res.status(400).json({ message: 'Enter the customer name.' });
+  if (customer.gstin && !/^[0-9]{2}[A-Z0-9]{13}$/i.test(String(customer.gstin).trim())) return res.status(400).json({ message: 'Customer GSTIN must be 15 characters.' });
+  const existing = await Invoice.findOne({ sale: saleId }).lean();
+  if (existing) return res.json(existing);
+  const sale = await Sale.findById(saleId).lean();
+  if (!sale) return res.status(404).json({ message: 'Sale not found.' });
+  const seller = await getSettings();
+  const date = invoiceDate ? new Date(invoiceDate) : new Date();
+  if (Number.isNaN(date.getTime())) return res.status(400).json({ message: 'Enter a valid invoice date.' });
+  const interState = Boolean(seller.state && customer.state && seller.state !== customer.state);
+
+  // Selling prices are GST-inclusive, so the taxable value is backed out of each line total.
+  const items = sale.items.map((item) => {
+    const quantity = item.quantity - item.returnedQuantity;
+    if (quantity <= 0) return null;
+    const total = round(item.sellingPrice * quantity);
+    const gstRate = Number(item.gstRate || 0);
+    const taxableValue = round(total / (1 + gstRate / 100));
+    const tax = round(total - taxableValue);
+    const half = round(tax / 2);
+    return {
+      name: item.name, sku: item.sku, hsn: item.hsn, packSize: item.packSize, quantity, gstRate, total,
+      rate: round(taxableValue / quantity), taxableValue,
+      cgst: interState ? 0 : half, sgst: interState ? 0 : round(tax - half), igst: interState ? tax : 0,
+    };
+  }).filter(Boolean);
+  if (!items.length) return res.status(400).json({ message: 'Every item in this sale has been returned, so there is nothing to bill.' });
+
+  const sum = (key) => round(items.reduce((total, item) => total + item[key], 0));
+  const exact = sum('total');
+  const grandTotal = Math.round(exact);
+  const totals = {
+    taxableValue: sum('taxableValue'), cgst: sum('cgst'), sgst: sum('sgst'), igst: sum('igst'),
+    tax: round(sum('cgst') + sum('sgst') + sum('igst')), roundOff: round(grandTotal - exact), grandTotal,
+  };
+  const fy = financialYear(date);
+  const counter = await Counter.findOneAndUpdate({ _id: `invoice-${fy}` }, { $inc: { seq: 1 } }, { upsert: true, new: true });
+  const invoice = await Invoice.create({
+    invoiceNumber: `${seller.invoicePrefix || 'AE'}/${fy}/${String(counter.seq).padStart(4, '0')}`,
+    sale: sale._id, saleNumber: sale.saleNumber, invoiceDate: date, interState,
+    seller: Object.fromEntries(settingsFields.filter((key) => key !== 'invoicePrefix').map((key) => [key, seller[key] || ''])),
+    customer: { name: customer.name, address: customer.address, gstin: customer.gstin, state: customer.state, phone: customer.phone },
+    items, totals,
+  });
+  res.status(201).json(invoice.toObject());
+}));
+
+app.delete('/api/invoices/:id', asyncRoute(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Invoice not found.' });
+  const invoice = await Invoice.findByIdAndDelete(req.params.id);
+  if (!invoice) return res.status(404).json({ message: 'Invoice not found.' });
+  res.status(204).end();
 }));
 
 app.use(express.static(path.join(rootDir, '../dist')));
