@@ -10,6 +10,7 @@ import Settings from './models/Settings.js';
 import Invoice from './models/Invoice.js';
 import Counter from './models/Counter.js';
 import Customer from './models/Customer.js';
+import Refill from './models/Refill.js';
 
 const app = express();
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
@@ -123,6 +124,38 @@ app.post('/api/chat', asyncRoute(async (req, res) => {
 app.get('/api/products', asyncRoute(async (_req, res) => {
   const products = await Product.find().sort({ updatedAt: -1 }).lean();
   res.json(products);
+}));
+
+app.get('/api/refills', asyncRoute(async (_req, res) => {
+  const refills = await Refill.find().sort({ refillDate: -1, createdAt: -1 }).lean();
+  res.json(refills);
+}));
+
+app.post('/api/products/:id/refills', asyncRoute(async (req, res) => {
+  const product = await Product.findById(req.params.id);
+  if (!product) return res.status(404).json({ message: 'Product not found.' });
+  const quantity = Number(req.body.quantity);
+  const pricePerPack = Number(req.body.pricePerPack);
+  const refillDate = new Date(`${req.body.refillDate}T00:00:00.000Z`);
+  if (!Number.isInteger(quantity) || quantity < 1) return res.status(400).json({ message: 'Refill quantity must be a whole number greater than zero.' });
+  if (!Number.isFinite(pricePerPack) || pricePerPack < 0) return res.status(400).json({ message: 'Refill price must be zero or greater.' });
+  if (!req.body.refillDate || Number.isNaN(refillDate.getTime()) || refillDate.toISOString().slice(0, 10) !== req.body.refillDate) {
+    return res.status(400).json({ message: 'Choose a valid refill date.' });
+  }
+  const stockGroupId = stockGroupIdFor(product);
+  const stockOwner = await Product.findById(stockGroupId) || product;
+  await setStockGroupQuantity(stockGroupId, Number(stockOwner.quantity || 0) + quantity);
+  const refill = await Refill.create({
+    product: product._id,
+    stockGroupId,
+    name: product.name,
+    sku: product.sku,
+    quantity,
+    refillDate,
+    pricePerPack,
+    packSize: Number(product.packSize || 1),
+  });
+  res.status(201).json(refill);
 }));
 
 app.post('/api/products', asyncRoute(async (req, res) => {

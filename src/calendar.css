@@ -372,6 +372,16 @@
   font-weight: 700;
 }
 
+.calendar-day.has-refills .calendar-day-number {
+  color: #b27c37;
+}
+
+.calendar-day-refill-count {
+  color: #a87532;
+  font-size: 9px;
+  font-weight: 700;
+}
+
 .calendar-day-products {
   display: -webkit-box;
   width: 100%;
@@ -451,6 +461,33 @@
 .calendar-order-title strong {
   color: #5e51bd;
   font-size: 10px;
+}
+
+.calendar-refill {
+  border-color: #efe3cd;
+  background: #fffdf8;
+}
+
+.calendar-refill .calendar-order-title strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #a87532;
+}
+
+.refill-event-list {
+  margin-top: 9px;
+}
+
+.refill-product-button {
+  border-color: #e9dfc9 !important;
+  background: #fffdf8 !important;
+  color: #96703c !important;
+}
+
+.refill-product-button:hover {
+  border-color: #d7c39d !important;
+  background: #fbf5e9 !important;
 }
 
 .calendar-order-title span {
