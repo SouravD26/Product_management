@@ -434,6 +434,7 @@ app.get('/api/reports/monthly', asyncRoute(async (req, res) => {
       const totalPrice = round(item.sellingPrice * netQuantity);
       const gstRate = Number(item.gstRate || 0);
       const gstAmount = round(totalPrice * (gstRate / (100 + gstRate)));
+      const revenueExGst = round(totalPrice - gstAmount);
       const overallCost = round(item.buyPrice * netQuantity);
       const delivery = round(item.deliveryFee * item.quantity);
       const commission = round(revenueExGst * Number(item.commissionRate ?? 15) / 100);
