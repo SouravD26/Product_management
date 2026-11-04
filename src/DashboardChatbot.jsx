@@ -5,17 +5,7 @@ const money = (value = 0) => new Intl.NumberFormat('en-IN', { style: 'currency',
 const monthName = (value) => new Intl.DateTimeFormat('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}-01T00:00:00Z`));
 
 function expectedProfit(product) {
-  const returns = Math.min(1, Math.max(0, Number(product.customerReturnRate || 0) / 100));
-  const good = Math.max(0, Number(product.goodReturnRate ?? 100));
-  const damaged = Math.max(0, Number(product.damagedReturnRate || 0));
-  const goodShare = good + damaged > 0 ? good / (good + damaged) : 1;
-  const commission = Math.min(1, Math.max(0, Number(product.commissionRate ?? 15) / 100));
-  const gst = Math.max(0, Number(product.gstRate || 0) / 100);
-  const factor = (1 - returns) * (1 - commission) / (1 + gst);
-  const costs = Number(product.buyPrice || 0) * (1 - returns * goodShare)
-    + Number(product.deliveryFee || 0) + Number(product.packagingCost || 0)
-    + Number(product.additionalCost || 0) + Number(product.returnShippingCost || 0) * returns;
-  return Number(product.sellingPrice || 0) * factor - costs;
+  return Number(product.desiredProfit || 0);
 }
 
 function suggestedSellingPrice(product) {
@@ -74,7 +64,7 @@ function answerQuestion(question, { products, sales, report, month }) {
     return 'Desired profit is the amount you want to keep on each sale that is not returned. The price calculator works backward from that target after GST, commission, delivery, packaging, additional spend, and expected returns.';
   }
   if (q.includes('expected profit') || q.includes('actual profit') || q.includes('why') && q.includes('profit')) {
-    return 'Expected product profit uses the product pricing and return-rate assumptions. Monthly actual profit uses recorded sales and returns, saved costs, GST, commission, shipping, packaging, and additional spend. They can differ when actual return quantities differ from the product return estimate.';
+    return 'The profit shown is the desired profit you set for each product, multiplied by the packs kept by customers. Returned packs are excluded.';
   }
   if (q.includes('gst') && (q.includes('price') || q.includes('calculat') || q.includes('include'))) {
     return 'The price calculator assumes your entered selling price includes GST. It removes the GST portion before calculating profit, then applies commission to the amount after GST. Change the GST rate in the product form to update the suggested price.';
@@ -101,7 +91,7 @@ function answerQuestion(question, { products, sales, report, month }) {
       return suggested === null ? `${product.name} has a 100% return rate or commission, so a suggested price cannot be calculated.` : `${product.name} has a suggested selling price of ${money(suggested)} based on its desired profit and saved costs.`;
     }
     if (q.includes('profit') || q.includes('margin')) {
-      return `${product.name} is estimated to make ${money(expectedProfit(product))} per shipped order at its current selling price of ${money(product.sellingPrice)}. Its target profit is ${money(product.desiredProfit)} per kept sale.`;
+      return `${product.name} has a desired profit of ${money(expectedProfit(product))} per kept pack.`;
     }
     if (q.includes('return')) {
       return `${product.name} has a ${Number(product.customerReturnRate || 0)}% customer return rate. The saved return mix is ${Number(product.goodReturnRate ?? 100)}% good and ${Number(product.damagedReturnRate || 0)}% damaged.`;
@@ -110,11 +100,11 @@ function answerQuestion(question, { products, sales, report, month }) {
       const suggested = suggestedSellingPrice(product);
       return `${product.name}: buy ${money(product.buyPrice)}, current selling price ${money(product.sellingPrice)}, suggested price ${suggested === null ? 'unavailable' : money(suggested)}, commission ${Number(product.commissionRate ?? 15)}%, GST ${Number(product.gstRate || 0)}%, packaging ${money(product.packagingCost)}, and additional spend ${money(product.additionalCost)} per unit.`;
     }
-    return `${product.name} (${product.sku}): ${product.quantity} units in stock, buy price ${money(product.buyPrice)}, selling price ${money(product.sellingPrice)}, and expected profit ${money(expectedProfit(product))} per shipped order.`;
+    return `${product.name} (${product.sku}): ${product.quantity} units in stock, buy price ${money(product.buyPrice)}, selling price ${money(product.sellingPrice)}, and desired profit ${money(expectedProfit(product))} per kept pack.`;
   }
 
   if (q.includes('sales report') || q.includes('sales summary') || q.includes('show sales') || q.includes('give me sales')) {
-    return `Sales report for ${period}: ${totals.orders || 0} orders, ${money(totals.revenue)} gross revenue, ${money(totals.profit)} net profit, and ${totals.returnedUnits || 0} returned units. Open Profit reports for the detailed rows or to export the month as CSV.`;
+    return `Sales report for ${period}: ${totals.orders || 0} orders, ${money(totals.revenue)} gross revenue, ${money(totals.desiredProfit)} desired profit earned, and ${totals.returnedUnits || 0} returned units. Open Profit reports for the detailed rows or to export the month as CSV.`;
   }
   if (q.includes('is it right') || q.includes('is this correct') || q.includes('is that correct') || q.includes('is it correct')) {
     return 'I can check a product price against its suggested price. Tell me the product name or SKU, and I’ll compare its current and suggested selling prices.';
@@ -129,7 +119,7 @@ function answerQuestion(question, { products, sales, report, month }) {
     return empty.length ? `Out of stock: ${empty.map((item) => item.name).join(', ')}.` : 'All listed products currently have stock available.';
   }
   if (q.includes('profit') || q.includes('earning') || q.includes('earned')) {
-    return `Net profit for ${period} is ${money(totals.profit)}. Desired profit for the kept units is ${money(totals.desiredProfit)}. This report uses the prices and costs saved on each sale.`;
+    return `Desired profit earned for ${period} is ${money(totals.desiredProfit)} across the packs kept by customers.`;
   }
   if (q.includes('revenue') || q.includes('sales amount') || q.includes('turnover')) {
     return `Gross sales revenue for ${period} is ${money(totals.revenue)} across ${totals.orders || 0} orders. GST is shown separately in the report.`;
@@ -139,7 +129,7 @@ function answerQuestion(question, { products, sales, report, month }) {
   }
   if (q.includes('most profitable') || q.includes('highest profit')) {
     const ranked = products.map((item) => ({ item, profit: expectedProfit(item) })).sort((a, b) => b.profit - a.profit).slice(0, 3);
-    return ranked.length ? `Highest expected profit per shipped order: ${ranked.map(({ item, profit }) => `${item.name} (${money(profit)})`).join(', ')}.` : 'There are no products to compare yet.';
+    return ranked.length ? `Highest desired profit per kept pack: ${ranked.map(({ item, profit }) => `${item.name} (${money(profit)})`).join(', ')}.` : 'There are no products to compare yet.';
   }
   if (q.includes('best seller') || q.includes('top selling') || q.includes('sold the most')) {
     const quantities = new Map();
@@ -198,7 +188,7 @@ export default function DashboardChatbot({ products, sales, report, month, chatM
           deliveryFee: item.deliveryFee, packagingCost: item.packagingCost, additionalCost: item.additionalCost,
           customerReturnRate: item.customerReturnRate, goodReturnRate: item.goodReturnRate,
           damagedReturnRate: item.damagedReturnRate, returnShippingCost: item.returnShippingCost,
-          suggestedSellingPrice: suggestedSellingPrice(item), expectedProfitPerShipment: expectedProfit(item),
+          suggestedSellingPrice: suggestedSellingPrice(item), desiredProfitPerKeptPack: expectedProfit(item),
         })),
       },
       recentSales: sales.slice(0, 12).map((sale) => ({
